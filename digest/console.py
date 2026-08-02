@@ -35,9 +35,7 @@ class RunConsole(QPlainTextEdit):
         self._owner = owner
         self.setReadOnly(True)
         self.setMaximumBlockCount(2000)
-        font = QFontDatabase.systemFont(QFontDatabase.FixedFont)
-        font.setPointSize(9)
-        self.setFont(font)
+        self.setFont(ui.mono_font())
 
         self._queue = deque()
         self._line = ""          # строка, которую печатаем прямо сейчас

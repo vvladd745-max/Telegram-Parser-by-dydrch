@@ -15,6 +15,7 @@ import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QFontMetrics
 from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLabel, QCheckBox, QMessageBox, QFrame, QStackedWidget,
@@ -61,7 +62,8 @@ class MainWindow(QWidget):
         super().__init__()
         self.setWindowTitle(APP_TITLE)
         self.resize(940, 660)
-        self.run = None      # текущий прогон, пока идёт
+        self.run = None      # текущая проверка, пока идёт
+        self.restart_requested = False   # окно просит пересобрать себя
 
         # поток Telegram общий для всех страниц: клиент Telethon должен быть один
         self.telegram = TelegramWorker(parent=self)
@@ -83,12 +85,24 @@ class MainWindow(QWidget):
 
         self.go_to(PAGE_RUN, force=True)
         self.refresh()
+        self._look_at_start = self._look()
+
+    @staticmethod
+    def _look():
+        """Настройки внешнего вида, ради которых окно приходится пересобирать."""
+        return (settings.get("ui.theme", "system"), settings.get("ui.font_size", 0))
 
     # ---------- сборка окна ----------
 
     def _build_sidebar(self):
         side = QWidget()
-        side.setFixedWidth(216)
+        # ширина считается от шрифта: при крупных буквах фиксированные 216
+        # точек обрезали пункты меню на середине слова
+        metrics = QFontMetrics(self.font())
+        widest = max(metrics.horizontalAdvance(text) for text in
+                     (NAV_RUN, "Вход в Telegram", "Перечитать настройки",
+                      "✓ Готово к работе"))
+        side.setFixedWidth(max(216, widest + 84))
         side.setObjectName("sidebar")
         side.setStyleSheet(
             f"#sidebar {{ background: {ui.color(self, 'panel')};"
@@ -98,7 +112,8 @@ class MainWindow(QWidget):
         layout.setContentsMargins(16, 18, 16, 16)
         layout.setSpacing(6)
         layout.addWidget(ui.label(APP_TITLE, size=14, bold=True, wrap=True))
-        layout.addWidget(ui.label("Отбор постов из Telegram", tone="muted", widget=self))
+        layout.addWidget(ui.label("Отбор постов из Telegram", tone="muted",
+                                  widget=self, wrap=True))
         layout.addSpacing(14)
 
         self.run_nav = ui.nav_button(self, NAV_RUN, active=True)
@@ -187,6 +202,12 @@ class MainWindow(QWidget):
             entering.page_show()
 
     def on_page_saved(self):
+        # тема и размер букв «запекаются» в оформление при сборке окна,
+        # поэтому окно надо собрать заново — иначе половина осталась бы старой
+        if self._look() != self._look_at_start:
+            self.restart_requested = True
+            self.close()
+            return
         self.refresh()
         # настройки могли поменять api_id и api_hash: старый клиент Telethon
         # держит прежние, поэтому отпускаем сессию и проверяем вход заново.
@@ -466,10 +487,17 @@ def main():
     # разовый переезд: секреты из settings.json в Диспетчер учётных данных Windows
     settings.migrate_secrets()
     app = QApplication(sys.argv)
-    ui.apply_base_font(app)      # системный шрифт мелковат на большом экране
-    window = MainWindow()
-    window.show()
-    return app.exec()
+    # Окно собирается заново, если человек сменил тему или размер букв:
+    # эти вещи задаются при создании виджетов и на лету не переключаются.
+    while True:
+        ui.apply_theme(app, settings.get("ui.theme", "system"))
+        ui.apply_base_font(app, settings.get("ui.font_size", 0))
+        window = MainWindow()
+        window.show()
+        code = app.exec()
+        if not window.restart_requested:
+            return code
+        settings.load(force=True)
 
 
 if __name__ == "__main__":

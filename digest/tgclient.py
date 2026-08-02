@@ -161,6 +161,14 @@ class TelegramWorker(QThread):
             except Exception as e:
                 logger.warning(f"   [!] Telegram: не закрылось соединение: {e}")
             finally:
+                # Отменяем всё, что ещё выполняется. Иначе Telethon после
+                # закрытия цикла сыплет трассировками про уничтоженные задачи,
+                # а недоделанная корутина пытается послать сигнал в уже
+                # удалённое окно. Заметно при смене темы: окно пересобирается.
+                for task in asyncio.all_tasks(self._loop):
+                    if task is not asyncio.current_task():
+                        task.cancel()
+                await asyncio.sleep(0)          # даём отмене отработать
                 done.set()
                 self._loop.call_soon_threadsafe(self._loop.stop)
 

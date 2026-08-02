@@ -14,7 +14,7 @@
 """
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWidgets import (
-    QCheckBox, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
+    QCheckBox, QComboBox, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QSpinBox, QVBoxLayout, QWidget,
 )
 
@@ -147,8 +147,25 @@ class SettingsWindow(QWidget):
         self.matrix_box.setToolTip(
             "Посимвольная печать зелёным. Снимите галочку — включится обычный "
             "информативный вывод: строки появляются целиком и сразу.")
-        view = QVBoxLayout()
-        view.addWidget(self.matrix_box)
+        self.theme_box = QComboBox()
+        for key, name in ui.THEMES.items():
+            self.theme_box.addItem(name, key)
+        self.theme_box.setToolTip(
+            "«Как в системе» — окно подстраивается под настройку Windows.\n"
+            "Светлую или тёмную можно выбрать вручную, если системная не нравится.")
+
+        self.font_box = QSpinBox()
+        self.font_box.setRange(0, 20)
+        self.font_box.setSpecialValueText("как в системе")
+        self.font_box.setSuffix(" пт")
+        self.font_box.setToolTip(
+            "Размер букв во всём приложении. Ноль — взять из настроек Windows.\n"
+            "Обычные значения: 9 мелко, 11 средне, 14 крупно.")
+
+        view = QFormLayout()
+        view.addRow(self.matrix_box)
+        view.addRow("Тема:", self.theme_box)
+        view.addRow("Размер букв:", self.font_box)
         view_box = QGroupBox("Внешний вид")
         view_box.setLayout(view)
 
@@ -202,6 +219,9 @@ class SettingsWindow(QWidget):
         self.bot_token.setText(settings.get_secret("bot.token"))
         self.bot_chat.setText(str(settings.get("bot.chat_id") or ""))
         self.matrix_box.setChecked(bool(settings.get("ui.matrix", True)))
+        theme = str(settings.get("ui.theme", "system"))
+        self.theme_box.setCurrentIndex(max(0, self.theme_box.findData(theme)))
+        self.font_box.setValue(int(settings.get("ui.font_size", 0) or 0))
         self._sync_bot_fields()
         self._sync_secret_echo()
         self._saved_snapshot = self.snapshot()
@@ -242,7 +262,9 @@ class SettingsWindow(QWidget):
             "bot": {"enabled": self.bot_enabled.isChecked(),
                     "token": self.bot_token.text().strip(),
                     "chat_id": chat_id},
-            "ui": {"matrix": self.matrix_box.isChecked()},
+            "ui": {"matrix": self.matrix_box.isChecked(),
+                   "theme": self.theme_box.currentData(),
+                   "font_size": self.font_box.value()},
         }
         return values, troubles
 
@@ -282,7 +304,8 @@ class SettingsWindow(QWidget):
                 self.lookback.value(), self.dry_run.value(),
                 self.model_url.text(), self.model_name.text(), self.model_key.text(),
                 self.bot_enabled.isChecked(), self.bot_token.text(), self.bot_chat.text(),
-                self.matrix_box.isChecked())
+                self.matrix_box.isChecked(), self.theme_box.currentData(),
+                self.font_box.value())
 
     def has_changes(self):
         return self.snapshot() != self._saved_snapshot

@@ -10,8 +10,8 @@
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QFontDatabase
 from PySide6.QtWidgets import (
-    QFrame, QHBoxLayout, QLabel, QPlainTextEdit, QProgressBar, QPushButton,
-    QVBoxLayout, QWidget,
+    QApplication, QFrame, QHBoxLayout, QLabel, QPlainTextEdit, QProgressBar,
+    QPushButton, QVBoxLayout, QWidget,
 )
 from PySide6.QtGui import QPalette
 
@@ -158,6 +158,84 @@ def labeled(widget, text, tip):
     return holder
 
 
+# Тема и размер букв применяются ко всему приложению разом. Родные настройки
+# запоминаем при первом вызове, чтобы можно было вернуться к системным.
+_BASE_STYLE = None
+_BASE_PALETTE = None
+_BASE_FONT_SIZE = None
+
+THEMES = {"system": "Как в системе", "light": "Светлая", "dark": "Тёмная"}
+
+
+def _dark_palette():
+    p = QPalette()
+    p.setColor(QPalette.Window, QColor("#1e1f22"))
+    p.setColor(QPalette.WindowText, QColor("#e6e6e6"))
+    p.setColor(QPalette.Base, QColor("#17181a"))
+    p.setColor(QPalette.AlternateBase, QColor("#242629"))
+    p.setColor(QPalette.Text, QColor("#e6e6e6"))
+    p.setColor(QPalette.Button, QColor("#2a2c30"))
+    p.setColor(QPalette.ButtonText, QColor("#e6e6e6"))
+    p.setColor(QPalette.ToolTipBase, QColor("#2a2c30"))
+    p.setColor(QPalette.ToolTipText, QColor("#e6e6e6"))
+    p.setColor(QPalette.Highlight, QColor("#5aa9ff"))
+    p.setColor(QPalette.HighlightedText, QColor("#101114"))
+    p.setColor(QPalette.Disabled, QPalette.Text, QColor("#8a8f95"))
+    p.setColor(QPalette.Disabled, QPalette.ButtonText, QColor("#8a8f95"))
+    return p
+
+
+def _light_palette():
+    p = QPalette()
+    p.setColor(QPalette.Window, QColor("#f2f3f5"))
+    p.setColor(QPalette.WindowText, QColor("#1b1c1e"))
+    p.setColor(QPalette.Base, QColor("#ffffff"))
+    p.setColor(QPalette.AlternateBase, QColor("#eceef1"))
+    p.setColor(QPalette.Text, QColor("#1b1c1e"))
+    p.setColor(QPalette.Button, QColor("#f2f3f5"))
+    p.setColor(QPalette.ButtonText, QColor("#1b1c1e"))
+    p.setColor(QPalette.ToolTipBase, QColor("#ffffff"))
+    p.setColor(QPalette.ToolTipText, QColor("#1b1c1e"))
+    p.setColor(QPalette.Highlight, QColor("#0b63ce"))
+    p.setColor(QPalette.HighlightedText, QColor("#ffffff"))
+    p.setColor(QPalette.Disabled, QPalette.Text, QColor("#8a8f95"))
+    p.setColor(QPalette.Disabled, QPalette.ButtonText, QColor("#8a8f95"))
+    return p
+
+
+def apply_theme(app, mode="system"):
+    """Тема окна: как в системе, светлая или тёмная.
+
+    Своя тема ставится вместе со стилем Fusion: родной стиль Windows часть
+    цветов рисует сам и палитру игнорирует — получилось бы наполовину светлое
+    окно на тёмной теме.
+    """
+    global _BASE_STYLE, _BASE_PALETTE
+    if _BASE_STYLE is None:
+        _BASE_STYLE = app.style().objectName()
+        _BASE_PALETTE = QPalette(app.palette())
+    if mode == "dark":
+        app.setStyle("Fusion")
+        app.setPalette(_dark_palette())
+    elif mode == "light":
+        app.setStyle("Fusion")
+        app.setPalette(_light_palette())
+    else:
+        app.setStyle(_BASE_STYLE)
+        app.setPalette(_BASE_PALETTE)
+
+
+def apply_base_font(app, size=0, delta=1):
+    """Размер букв во всём приложении. size=0 — системный плюс delta:
+    системный на большом экране мелковат."""
+    global _BASE_FONT_SIZE
+    font = app.font()
+    if _BASE_FONT_SIZE is None:
+        _BASE_FONT_SIZE = font.pointSize()
+    font.setPointSize(int(size) if size else max(8, _BASE_FONT_SIZE + delta))
+    app.setFont(font)
+
+
 def set_nav_active(widget, button, active):
     """Перекрасить пункт меню: активный залит акцентом."""
     if active:
@@ -171,13 +249,6 @@ def set_nav_active(widget, button, active):
             f" border: none; border-radius: 6px; padding: 6px 12px; text-align: left; }}"
             f"QPushButton:hover {{ background: {color(widget, 'line')}; }}"
             f"QPushButton:disabled {{ color: {color(widget, 'muted')}; }}")
-
-
-def apply_base_font(app, delta=1):
-    """Чуть крупнее системного: на большом экране стандартный размер мелковат."""
-    font = app.font()
-    font.setPointSize(max(8, font.pointSize() + delta))
-    app.setFont(font)
 
 
 def style_table(widget, table):
@@ -202,14 +273,21 @@ def style_table(widget, table):
         f" border: none; }}")
 
 
+def mono_font():
+    """Моноширинный шрифт журнала — на пункт мельче основного, но растёт
+    вместе с ним: иначе при крупных буквах журнал остаётся микроскопическим."""
+    font = QFontDatabase.systemFont(QFontDatabase.FixedFont)
+    base = QApplication.font().pointSize()
+    font.setPointSize(max(8, base - 1))
+    return font
+
+
 def console_box(widget):
     """Окно журнала проверки: моноширинный шрифт, иначе колонки разъезжаются."""
     box = QPlainTextEdit()
     box.setReadOnly(True)
     box.setMaximumBlockCount(2000)
-    font = QFontDatabase.systemFont(QFontDatabase.FixedFont)
-    font.setPointSize(9)
-    box.setFont(font)
+    box.setFont(mono_font())
     box.setObjectName("console")
     box.setStyleSheet(
         f"#console {{ background: {color(widget, 'panel')};"

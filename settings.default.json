@@ -25,7 +25,9 @@
     "chat_id": 0
   },
   "ui": {
-    "matrix": true
+    "matrix": true,
+    "theme": "system",
+    "font_size": 0
   },
   "channels": [
     "https://t.me/InterNews_HW",
