@@ -100,7 +100,7 @@ class LoginWizard(QWidget):
         self.status.setWordWrap(True)
         self.status.setTextInteractionFlags(Qt.TextSelectableByMouse)
 
-        self.close_button = QPushButton("Вернуться к прогону")
+        self.close_button = QPushButton("Вернуться к проверке")
         self.close_button.clicked.connect(self.finished_login.emit)
         bottom = QHBoxLayout()
         bottom.addStretch(1)

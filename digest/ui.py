@@ -152,11 +152,12 @@ def style_table(widget, table):
     """Таблица рисуется системным стилем и по умолчанию остаётся белой даже
     в тёмной теме — белое пятно посреди окна. Приводим к общему виду."""
     table.setObjectName("grid")
-    table.setShowGrid(False)
+    table.setShowGrid(True)          # линии между столбцами: так строки читаются
     table.setAlternatingRowColors(True)
     table.verticalHeader().setDefaultSectionSize(28)
     table.setStyleSheet(
         f"#grid {{ background: {color(widget, 'panel')};"
+        f" gridline-color: {color(widget, 'line')};"
         f" alternate-background-color: {color(widget, 'line')};"
         f" color: {color(widget, 'text')};"
         f" border: 1px solid {color(widget, 'line')}; border-radius: 6px; }}"
@@ -170,7 +171,7 @@ def style_table(widget, table):
 
 
 def console_box(widget):
-    """Окно журнала прогона: моноширинный шрифт, иначе колонки разъезжаются."""
+    """Окно журнала проверки: моноширинный шрифт, иначе колонки разъезжаются."""
     box = QPlainTextEdit()
     box.setReadOnly(True)
     box.setMaximumBlockCount(2000)

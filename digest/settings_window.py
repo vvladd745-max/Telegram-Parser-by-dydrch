@@ -81,15 +81,17 @@ class SettingsWindow(QWidget):
         self.lookback = _hours_field(1, 240)
         self.dry_run = _hours_field(1, 240)
         depth = QFormLayout()
-        depth.addRow("Глубина первого запуска:", self.lookback)
-        depth.addRow("Окно тестового прогона:", self.dry_run)
-        depth_box = QGroupBox("Насколько глубоко смотреть")
+        depth.addRow("Первая проверка канала:", self.lookback)
+        depth.addRow("Тестовая проверка:", self.dry_run)
+        depth_box = QGroupBox("Длительность проверки")
         depth_box.setLayout(depth)
         self.lookback.setToolTip(
             "За сколько часов брать посты, когда канал читается впервые. "
             "Дальше программа помнит, где остановилась, и берёт только новое."
         )
-        self.dry_run.setToolTip("Окно для тестового прогона, который ничего не пересылает.")
+        self.dry_run.setToolTip(
+            "За сколько часов брать посты в тестовой проверке. Она ничего\n"
+            "не пересылает и не двигает закладки — только показывает результат.")
 
         # --- модель ---
         self.model_url = QLineEdit()
@@ -108,11 +110,11 @@ class SettingsWindow(QWidget):
         model.addRow("Ключ:", self.model_key)
         model.addRow("", self.check_button)
         model.addRow("", self.check_result)
-        model_box = QGroupBox("Модель")
+        model_box = QGroupBox("ИИ-модель для анализа постов")
         model_box.setLayout(model)
 
         # --- отчёты боту ---
-        self.bot_enabled = QCheckBox("Присылать отчёт о прогоне ботом")
+        self.bot_enabled = QCheckBox("Присылать отчёт о проверке ботом")
         self.bot_enabled.toggled.connect(self._sync_bot_fields)
         self.bot_token = _secret_field()
         self.bot_chat = QLineEdit()
@@ -125,13 +127,13 @@ class SettingsWindow(QWidget):
         bot_box.setLayout(bot)
 
         # --- вид ---
-        self.matrix_box = QCheckBox("Печатать журнал прогона как в «Матрице»")
+        self.matrix_box = QCheckBox("Печатать журнал проверки как в «Матрице»")
         self.matrix_box.setToolTip(
             "Посимвольная печать зелёным. Снимите галочку — включится обычный "
             "информативный вывод: строки появляются целиком и сразу.")
         view = QVBoxLayout()
         view.addWidget(self.matrix_box)
-        view_box = QGroupBox("Вид")
+        view_box = QGroupBox("Внешний вид")
         view_box.setLayout(view)
 
         # --- низ окна ---

@@ -1,6 +1,6 @@
 # Описание сборки для PyInstaller. Собирать так:
 #     pyinstaller digest.spec --noconfirm
-# Результат: dist/Дайджест/ — папка целиком, её и кладём в установщик.
+# Результат: dist/Парсер Telegram-каналов/ — папка целиком, её и кладём в установщик.
 #
 # Почему --onedir, а не один файл: onefile каждый запуск распаковывает всё
 # во временную папку, это медленно и мешает антивирусам. Решение принято
@@ -57,7 +57,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="Дайджест",
+    name="Парсер Telegram-каналов",
     debug=False,
     strip=False,
     upx=False,
@@ -73,5 +73,5 @@ coll = COLLECT(
     a.datas,
     strip=False,
     upx=False,
-    name="Дайджест",
+    name="Парсер Telegram-каналов",
 )

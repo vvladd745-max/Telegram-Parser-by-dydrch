@@ -30,7 +30,7 @@ from runner import DigestRun
 from console import RunConsole
 import ui
 
-APP_TITLE = "Дайджест"
+APP_TITLE = "Парсер Telegram-каналов"
 
 # как объяснить человеку выбор папки с данными (paths.mode())
 MODE_TEXT = {
@@ -39,16 +39,20 @@ MODE_TEXT = {
     "user": "обычный — файлы в папке пользователя",
 }
 
+# В боковой панели полное название не помещается, поэтому там короткий вариант,
+# а на самой странице стоит полный заголовок.
+NAV_RUN = "Проверка каналов"
+
 PAGE_RUN, PAGE_SETTINGS, PAGE_CHANNELS, PAGE_INTERESTS, PAGE_LOGIN = range(5)
 PAGE_TITLES = {
-    PAGE_RUN: "Прогон",
+    PAGE_RUN: "Проверка Telegram-каналов",
     PAGE_SETTINGS: "Настройки",
     PAGE_CHANNELS: "Каналы",
     PAGE_INTERESTS: "Интересы",
     PAGE_LOGIN: "Вход в Telegram",
 }
 
-CONSOLE_HINT = ("Здесь будет видно, что происходит во время прогона: "
+CONSOLE_HINT = ("Здесь будет видно, что происходит во время проверки: "
                 "какой канал читается и какое решение принято по каждому посту.")
 
 
@@ -93,11 +97,11 @@ class MainWindow(QWidget):
         layout = QVBoxLayout(side)
         layout.setContentsMargins(16, 18, 16, 16)
         layout.setSpacing(6)
-        layout.addWidget(ui.label(APP_TITLE, size=15, bold=True))
+        layout.addWidget(ui.label(APP_TITLE, size=14, bold=True, wrap=True))
         layout.addWidget(ui.label("Отбор постов из Telegram", tone="muted", widget=self))
         layout.addSpacing(14)
 
-        self.run_nav = ui.nav_button(self, "Прогон", active=True)
+        self.run_nav = ui.nav_button(self, NAV_RUN, active=True)
         self.settings_button = ui.nav_button(self, "Настройки")
         self.channels_button = ui.nav_button(self, "Каналы")
         self.interests_button = ui.nav_button(self, "Интересы")
@@ -201,18 +205,18 @@ class MainWindow(QWidget):
         head = QHBoxLayout()
         head.addWidget(ui.label(PAGE_TITLES[PAGE_RUN], size=16, bold=True))
         head.addStretch(1)
-        self.dry_run_box = QCheckBox("Тестовый прогон")
+        self.dry_run_box = QCheckBox("Тестовая проверка")
         self.dry_run_box.setChecked(True)
         self.dry_run_box.setToolTip(
-            "Тестовый прогон ничего не пересылает и не двигает закладки по каналам: "
-            "он только показывает, что программа отобрала бы.")
+            "Тестовая проверка ничего не пересылает и не двигает закладки по каналам: "
+            "она только показывает, что программа отобрала бы.")
         self.cancel_button = ui.flat_button(self, "Остановить")
         self.cancel_button.setEnabled(False)
         self.cancel_button.clicked.connect(self.cancel_run)
         self.cancel_button.setToolTip(
-            "Прогон дочитает текущий пост и остановится. Отобранное уже отправлено, "
+            "Проверка дочитает текущий пост и остановится. Отобранное уже отправлено, "
             "остальное дочитается в следующий раз.")
-        self.run_button = ui.primary_button(self, "Запустить прогон")
+        self.run_button = ui.primary_button(self, "Запустить проверку")
         self.run_button.clicked.connect(self.start_run)
         head.addWidget(self.dry_run_box)
         head.addWidget(self.cancel_button)
@@ -280,7 +284,7 @@ class MainWindow(QWidget):
         self.console = RunConsole(self)
         self.console.set_hint(CONSOLE_HINT)
         run_layout.addWidget(self.console, 1)
-        layout.addWidget(ui.card(self, "Прогон", run_layout), 1)
+        layout.addWidget(ui.card(self, "Проверка", run_layout), 1)
 
         self.status = ui.label("", wrap=True)
         layout.addWidget(self.status)
@@ -294,7 +298,7 @@ class MainWindow(QWidget):
         dry_run = self.dry_run_box.isChecked()
         if not dry_run:
             answer = QMessageBox.question(
-                self, "Боевой прогон",
+                self, "Настоящая проверка",
                 "Программа прочитает каналы и перешлёт отобранное. Закладки по каналам "
                 "сдвинутся: те же посты второй раз уже не придут.\n\nЗапускать?")
             if answer != QMessageBox.Yes:
@@ -303,7 +307,7 @@ class MainWindow(QWidget):
         hours = int(settings.get("digest.dry_run_hours" if dry_run
                                  else "digest.lookback_hours") or 2)
         self.console.clear()
-        # режим печати журнала берём на старте: менять его посреди прогона незачем
+        # режим печати журнала берём на старте: менять его посреди проверки незачем
         self.console.set_matrix(bool(settings.get("ui.matrix", True)))
         self.progress_label.setVisible(True)
         self.progress_label.setText("Готовлюсь...")
@@ -311,11 +315,11 @@ class MainWindow(QWidget):
         self.progress.setRange(0, 0)          # пока не знаем, сколько каналов
         self._set_counters()
         self._set_busy(True)
-        self.status.setText("Тестовый прогон идёт..." if dry_run else "Прогон идёт...")
+        self.status.setText("Тестовая проверка идёт..." if dry_run else "Проверка идёт...")
         # файл сессии Telegram один, и это база SQLite: пока её держит окно,
         # прогон не откроется вовсе. Отпускаем на время прогона.
         self.telegram.release_session()
-        self.telegram_value.setText("сессию держит прогон")
+        self.telegram_value.setText("сессию держит проверка")
 
         self.run = DigestRun(dry_run, hours, self)
         self.run.line.connect(self.console.append_line)
@@ -359,9 +363,9 @@ class MainWindow(QWidget):
         self.refresh()
         self._reconnect_telegram()
         if stopped:
-            self.status.setText("Прогон остановлен. Недочитанное придёт в следующий раз.")
+            self.status.setText("Проверка остановлена. Недочитанное придёт в следующий раз.")
         else:
-            self.status.setText("Прогон закончен.")
+            self.status.setText("Проверка закончена.")
 
     def on_run_failed(self, text):
         self._set_busy(False)
@@ -372,12 +376,12 @@ class MainWindow(QWidget):
         self.status.setText(text)
 
     def _reconnect_telegram(self):
-        """Прогон закончился и отпустил файл сессии — можно подключаться снова."""
+        """Проверка закончилась и отпустила файл сессии — можно подключаться снова."""
         self.telegram_value.setText("проверяю...")
         self.telegram.check()
 
     def _set_busy(self, busy):
-        """Во время прогона настройки не трогаем: он читает их на ходу."""
+        """Во время проверки настройки не трогаем: она читает их на ходу."""
         self.run_button.setEnabled(not busy)
         self.cancel_button.setEnabled(busy)
         self.dry_run_box.setEnabled(not busy)
@@ -395,8 +399,8 @@ class MainWindow(QWidget):
         # идёт прогон — спрашиваем, а не обрываем молча
         if self.run is not None and self.run.isRunning():
             answer = QMessageBox.question(
-                self, "Прогон ещё идёт",
-                "Остановить прогон и закрыть программу? Уже отправленное останется, "
+                self, "Проверка ещё идёт",
+                "Остановить проверку и закрыть программу? Уже отправленное останется, "
                 "остальное дочитается в следующий раз.")
             if answer != QMessageBox.Yes:
                 event.ignore()

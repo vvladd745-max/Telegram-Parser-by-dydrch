@@ -19,7 +19,7 @@ from core.logs import logger
 
 
 class DigestRun(QThread):
-    """Один прогон. Второй раз объект не переиспользуется — создавайте новый."""
+    """Одна проверка. Второй раз объект не переиспользуется — создавайте новый."""
 
     line = Signal(str)          # строка журнала для окна
     step = Signal(dict)         # события хода работы из main()
@@ -35,7 +35,7 @@ class DigestRun(QThread):
         self._sink_id = None
 
     def cancel(self):
-        """Просьба остановиться. Прогон дочитает текущий пост и выйдет по
+        """Просьба остановиться. Проверка дочитает текущий пост и выйдет по
         чекпоинту: курсор останется на последнем успешно отправленном."""
         self._cancel.set()
 
@@ -53,11 +53,11 @@ class DigestRun(QThread):
                 import digest as digest_module
                 digest = digest_module
             except SystemExit:
-                self.failed.emit("Настройки не читаются — прогон не запускался. "
+                self.failed.emit("Настройки не читаются — проверка не запускалась. "
                                  "Откройте «Настройки…» и проверьте их.")
                 return
             except Exception as e:
-                self.failed.emit(f"Не удалось подготовить прогон: {e}")
+                self.failed.emit(f"Не удалось подготовить проверку: {e}")
                 return
 
             if not self.dry_run:
@@ -65,7 +65,7 @@ class DigestRun(QThread):
                 logs.setup("digest")
                 if not digest.acquire_lock():
                     self.failed.emit(
-                        "Уже идёт другой прогон — этот не запускаю, чтобы не задвоить посты.")
+                        "Уже идёт другая проверка — эту не запускаю, чтобы не задвоить посты.")
                     return
                 lock_taken = True
 
@@ -73,8 +73,8 @@ class DigestRun(QThread):
                 dry_run=self.dry_run, hours=self.hours,
                 progress=self._on_progress, cancel=self._cancel))
         except Exception as e:
-            logger.exception("Прогон упал")
-            self.failed.emit(f"Прогон прервался: {e}")
+            logger.exception("Проверка упала")
+            self.failed.emit(f"Проверка прервалась: {e}")
             return
         finally:
             if lock_taken and digest is not None:
@@ -105,7 +105,7 @@ class DigestRun(QThread):
         self.step.emit(data)
 
     def stop_logging(self):
-        """Снять окно с потока журнала. Зовётся, когда прогон завершился."""
+        """Снять окно с потока журнала. Зовётся, когда проверка завершилась."""
         if self._sink_id is not None:
             try:
                 logger.remove(self._sink_id)

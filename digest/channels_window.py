@@ -60,7 +60,8 @@ class ChannelsWindow(QWidget):
         self._pending = 0         # сколько проверок ещё в работе
 
         self.table = QTableWidget(0, 4)
-        self.table.setHorizontalHeaderLabels(["Читать", "Ссылка", "Ник", "Состояние"])
+        self.table.setHorizontalHeaderLabels(
+            ["Чтение", "Ссылка на канал", "Ник канала", "Состояние"])
         self.table.verticalHeader().setVisible(False)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
