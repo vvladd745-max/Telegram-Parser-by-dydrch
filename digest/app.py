@@ -14,6 +14,7 @@ import sys, os
 # Корень проекта в путь — чтобы работал импорт пакета core/ из любой папки.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import portalocker
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFontMetrics
 from PySide6.QtWidgets import (
@@ -499,6 +500,33 @@ class MainWindow(QWidget):
             self.status.setText("")
 
 
+def take_app_lock():
+    """Замок на всю программу. None — значит она уже запущена.
+
+    Два окна разом работать не могут: файл сессии Telegram — это база SQLite,
+    и второй экземпляр получает «database is locked», а человек видит
+    непонятную английскую ругань в журнале.
+
+    Замок держит операционная система, пока жив процесс: если программу
+    убили или машина перезагрузилась, он снимается сам.
+    """
+    paths.ensure_dirs()
+    try:
+        handle = open(paths.app_lock_file(), "a+", encoding="utf-8")
+    except OSError:
+        return None                       # некуда писать — лучше запустить, чем не дать
+    try:
+        portalocker.lock(handle, portalocker.LOCK_EX | portalocker.LOCK_NB)
+    except portalocker.exceptions.BaseLockException:
+        handle.close()
+        return None
+    handle.seek(0)
+    handle.truncate()
+    handle.write(str(os.getpid()))
+    handle.flush()
+    return handle
+
+
 def main():
     logs.setup("app")
     # Первое, что пишем в журнал: где мы и что нам доступно. В сборке без
@@ -516,6 +544,16 @@ def main():
     icon = ui.app_icon()
     if icon is not None:
         app.setWindowIcon(icon)
+
+    lock = take_app_lock()
+    if lock is None:
+        logs.logger.warning("[!] Программа уже запущена — второе окно не открываю.")
+        QMessageBox.information(
+            None, APP_TITLE,
+            "Программа уже запущена.\n\n"
+            "Посмотрите на панели задач — окно там. Двум окнам разом работать "
+            "нельзя: они начнут мешать друг другу читать Telegram.")
+        return 0
     # Окно собирается заново, если человек сменил тему или размер букв:
     # эти вещи задаются при создании виджетов и на лету не переключаются.
     while True:

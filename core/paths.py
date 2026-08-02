@@ -39,6 +39,8 @@ ICON_NAME = "icon.ico"
 LOGO_NAME = "logo.png"
 STATE_NAME = "state.json"
 LOCK_NAME = "digest.lock"
+# Замок самой программы — отдельный от замка проверки: они защищают
+APP_LOCK_NAME = "app.lock"        # от разного и снимаются в разное время
 DIGEST_DIRNAME = "digest"
 LOGS_DIRNAME = "logs"
 
@@ -137,6 +139,10 @@ def session_path(name="tg_digest"):
 
 def lock_file():
     return os.path.join(digest_dir(), LOCK_NAME)
+
+
+def app_lock_file():
+    return os.path.join(digest_dir(), APP_LOCK_NAME)
 
 
 def logs_dir():
