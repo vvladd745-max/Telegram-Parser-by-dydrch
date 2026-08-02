@@ -304,6 +304,35 @@ def save_interests(text):
     return path
 
 
+def blockers():
+    """Чего не хватает, чтобы вообще начать проверку. Пустой список — можно.
+
+    Отличается от problems(): там все замечания, включая необязательные,
+    а здесь только то, без чего проверка гарантированно упадёт.
+    """
+    out = []
+    try:
+        load()
+    except SettingsError as e:
+        return [str(e)]
+
+    try:
+        api_id = int(get("telegram.api_id") or 0)
+    except (TypeError, ValueError):
+        api_id = 0
+    if api_id <= 0 or not get_secret("telegram.api_hash").strip():
+        out.append("не заполнены api_id и api_hash — их выдают на my.telegram.org")
+    if not str(get("telegram.target", "") or "").strip():
+        out.append("не указано, куда пересылать посты")
+    if not channels():
+        out.append("список каналов пуст")
+    try:
+        interests()
+    except SettingsError:
+        out.append("нет текста интересов — по нему модель отбирает посты")
+    return out
+
+
 def problems():
     """Понятные человеку претензии к настройкам. Пустой список — всё в порядке.
 

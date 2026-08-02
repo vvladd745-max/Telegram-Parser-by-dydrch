@@ -331,6 +331,17 @@ class MainWindow(QWidget):
     def start_run(self):
         if self.run is not None and self.run.isRunning():
             return
+        # Проверять нечем — говорим об этом словами. Иначе Telethon вывалит
+        # английскую трассировку про пустой API ID, и человек решит,
+        # что программа сломана.
+        troubles = settings.blockers()
+        if troubles:
+            self.status.setStyleSheet(f"color: {self._error_color()};")
+            self.status.setText(
+                "Проверку не запустить: " + troubles[0] +
+                (f" (и ещё {len(troubles) - 1})" if len(troubles) > 1 else "") +
+                ". Загляните в «Настройки».")
+            return
         dry_run = self.dry_run_box.isChecked()
         if not dry_run:
             answer = QMessageBox.question(

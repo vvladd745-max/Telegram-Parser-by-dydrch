@@ -43,7 +43,11 @@ class DigestRun(QThread):
 
     def run(self):
         # весь вывод прогона дублируем в окно
-        self._sink_id = logger.add(self._to_window, format="{message}", level="INFO")
+        # В окно — только сами сообщения. Трассировки остаются в файле журнала:
+        # человеку они ничего не говорят, а экран забивают целиком.
+        self._sink_id = logger.add(self._to_window, format="{message}", level="INFO",
+                                   backtrace=False, diagnose=False,
+                                   filter=lambda record: record["exception"] is None)
         lock_taken = False
         digest = None
         try:
@@ -73,7 +77,14 @@ class DigestRun(QThread):
             summary = asyncio.run(digest.main(
                 dry_run=self.dry_run, hours=self.hours,
                 progress=self._on_progress, cancel=self._cancel))
+        except ValueError as e:
+            # Telethon так ругается на пустые api_id и api_hash
+            logger.exception("Проверка упала")
+            self.failed.emit("Проверка не началась: не заполнены api_id и api_hash. "
+                             "Загляните в «Настройки».")
+            return
         except Exception as e:
+            # Подробности с трассировкой — в журнал, человеку — одна строка
             logger.exception("Проверка упала")
             self.failed.emit(f"Проверка прервалась: {e}")
             return
