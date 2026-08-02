@@ -300,14 +300,18 @@ async def main(dry_run=None, hours=None, progress=None, cancel=None):
         dry_run = "--dry-run" in sys.argv
     if hours is None:
         hours = _arg_hours(dry_run)
+    from_window = progress is not None      # окно передаёт progress, консоль — нет
     progress = progress or (lambda event, **data: None)
     cancelled = (lambda: cancel is not None and cancel.is_set())
     if dry_run:
-        logger.info("=== ТЕСТОВЫЙ РЕЖИМ (dry-run): без пересылки и без записи state ===")
-        logger.info(f"=== Смотрю последние {hours} ч по всем каналам, state игнорирую ===")
-        logger.info("=== (окно меняется флагом, например: python digest.py --dry-run --hours 6) ===")
+        logger.info("Тестовая проверка: ничего не пересылаю и закладки по каналам "
+                    "не двигаю.")
+        logger.info(f"Смотрю посты за последние {hours} ч по всем каналам.")
+        if not from_window:
+            logger.info("Другое окно просмотра: флаг --hours, например --hours 6")
     else:
-        logger.info(f"=== Проверка каналов запущена (окно первого запуска: {hours} ч) ===")
+        logger.info(f"Проверка началась. Каналы, которые читаю впервые, беру "
+                    f"за последние {hours} ч.")
 
     state = load_state()
     cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=hours)
@@ -331,14 +335,14 @@ async def main(dry_run=None, hours=None, progress=None, cancel=None):
     for number, ch in enumerate(CHANNELS, 1):
         if cancelled():
             stopped = True
-            logger.info("=== Остановлено кнопкой: непроверенные каналы дочитаем в следующую проверку ===")
+            logger.info("Остановлено кнопкой: остальные каналы прочитаю в следующую проверку.")
             break
         progress("channel", number=number, total=len(CHANNELS), name=str(ch))
         try:
             entity, note = await _open_channel(client, ch, state)
         except FloodWaitError as e:
             wait = min(int(getattr(e, "seconds", 60)) + 5, FLOOD_WAIT_CAP)
-            logger.warning(f"[!] FloodWait {wait} с на {ch} — жду и пробую ещё раз...")
+            logger.warning(f"[!] Telegram просит подождать {wait} с (слишком частые запросы) — жду и пробую ещё раз")
             await asyncio.sleep(wait)
             try:
                 entity, note = await _open_channel(client, ch, state)
@@ -346,21 +350,21 @@ async def main(dry_run=None, hours=None, progress=None, cancel=None):
                 entity, note = None, str(e2)
         if entity is None:
             unreachable.append((str(ch), str(note)))
-            logger.warning(f"[!] Не удалось открыть {ch}: {note}")
+            logger.warning(f"[!] Не удалось открыть канал {ch}: {note}")
             continue
         if note:
             renamed.append((str(ch), note))
-            logger.info(f"[~] {ch} по ссылке не открылся, но нашёлся по id. Новая ссылка: {note}")
+            logger.info(f"[~] {ch} по ссылке не открылся, но нашёлся: канал сменил адрес. Новый: {note}")
 
         # ключ состояния — username канала; при первом запуске переносим со старого ключа-URL
         key = _chan_key(ch, entity)
         if not dry_run and _migrate_key(state, str(ch), key):
-            logger.info(f"   ↪ состояние перенесено: {ch} -> {key}")
+            logger.info(f"   закладка перенесена на новое имя канала: {key}")
         # канал сменил ник: тащим курсор и реестр отправленного со старого ключа,
         # иначе он считается новым и перечитывает окно в 28 часов с дублями
         old_key = _chan_memo(state, ch).get("key")
         if not dry_run and old_key and old_key != key and _migrate_key(state, old_key, key):
-            logger.info(f"   ↪ канал сменил ник: {old_key} -> {key}, состояние перенесено")
+            logger.info(f"   канал сменил имя ({old_key} → {key}), закладка перенесена")
         if not dry_run:
             _remember_chan(state, ch, entity, key)
 
@@ -394,16 +398,19 @@ async def main(dry_run=None, hours=None, progress=None, cancel=None):
             # Telegram просит подождать. Раньше это ловилось общим except и канал
             # молча выпадал из прогона.
             wait = min(int(getattr(e, "seconds", 60)) + 5, FLOOD_WAIT_CAP)
-            logger.warning(f"[{title}] FloodWait {wait} с при чтении — жду, канал дочитаю в следующую проверку.")
+            logger.warning(f"[{title}] Telegram просит подождать {wait} с — жду, а канал дочитаю в следующую проверку")
             await asyncio.sleep(wait)
             continue
         except Exception as e:
             errors += 1
-            logger.error(f"[{title}] [!] ошибка чтения канала: {e}")
+            logger.error(f"[{title}] [!] не удалось прочитать канал: {e}")
             continue
 
         posts = [groups[k] for k in order]   # каждый пост = список сообщений
-        logger.info(f"[{title}] новых постов: {len(posts)} — анализирую...")
+        if posts:
+            logger.info(f"[{title}] новых постов: {len(posts)} — смотрю каждый")
+        else:
+            logger.info(f"[{title}] новых постов нет")
 
         # --- от старых к новым ---
         for group in reversed(posts):
@@ -424,17 +431,17 @@ async def main(dry_run=None, hours=None, progress=None, cancel=None):
                     # модель лежит — нет смысла ждать по 9 минут на каждом из 54 каналов
                     errors += 1
                     llm_dead = True
-                    logger.error(f"   [!] МОДЕЛЬ НЕДОСТУПНА: {e}")
-                    logger.error("   [!] Прерываю всю проверку. Непроверенные посты дошлём в следующий раз.")
+                    logger.error(f"   [!] Модель не отвечает: {e}")
+                    logger.error("   [!] Останавливаю проверку. Непросмотренные посты придут в следующий раз.")
                     break
                 except Exception as e:
                     # ОШИБКА != SKIP: не теряем пост и не двигаем состояние дальше
                     errors += 1
                     ids_err = sorted(m.id for m in group)
-                    logger.error(f"   [!] ошибка проверки поста (id {ids_err}): {e}")
+                    logger.error(f"   [!] не удалось показать пост модели: {e}")
                     if dry_run:
                         continue          # в тесте просто пропускаем этот пост
-                    logger.error("   [!] стоп по каналу — дошлём этот и следующие посты в след. проверку")
+                    logger.error("   [!] дальше по этому каналу не иду: этот и следующие посты придут в следующую проверку")
                     break                 # чекпоинт: committed_id остаётся на последнем удачном
             else:
                 interesting = has_media   # нет подписи, но есть медиа → на ревью (особое правило)
@@ -446,9 +453,9 @@ async def main(dry_run=None, hours=None, progress=None, cancel=None):
 
             if dry_run:
                 # только печатаем решение — ничего не шлём и не сохраняем
-                verdict = "INTERESTING" if interesting else "SKIP"
-                preview = " ".join(text.split())[:80] or "(без текста, есть медиа)"
-                logger.info(f"   {verdict:<11} | {preview}")
+                verdict = "ИНТЕРЕСНО" if interesting else "пропускаю"
+                preview = " ".join(text.split())[:80] or "(без текста, только картинка или видео)"
+                logger.info(f"   {verdict:<10} | {preview}")
                 if interesting:
                     found += 1
                 else:
@@ -463,7 +470,7 @@ async def main(dry_run=None, hours=None, progress=None, cancel=None):
             # защита от повторов: этот пост уже пересылали (прогон прервался/наложился) —
             # не шлём второй раз, просто двигаем курсор дальше
             if post_max in sent:
-                logger.info(f"   ↩ дубль (id {post_max} уже отправлялся) — пропускаю")
+                logger.info("   этот пост уже пересылали раньше — пропускаю")
                 committed_id = post_max
                 continue
 
@@ -472,7 +479,7 @@ async def main(dry_run=None, hours=None, progress=None, cancel=None):
             if EXTRACT_SEEDS and text.strip() and len(fresh_seeds) < 60:
                 fresh_seeds.extend(extract_seeds(text))
             ids = sorted(m.id for m in group)
-            logger.info(f"   + интересное (id {ids}) — пересылаю медиа: {len(ids)}")
+            logger.info(f"   ИНТЕРЕСНО — пересылаю (вложений: {len(ids)})")
 
             delivered = False
             try:
@@ -481,15 +488,15 @@ async def main(dry_run=None, hours=None, progress=None, cancel=None):
                 delivered = True
             except FloodWaitError as e:
                 wait = min(int(getattr(e, "seconds", 30)) + 5, FLOOD_WAIT_CAP)
-                logger.warning(f"   [!] FloodWait {wait} с при пересылке — жду и повторяю...")
+                logger.warning(f"   [!] Telegram просит подождать {wait} с — жду и повторяю пересылку")
                 await asyncio.sleep(wait)
                 try:
                     await client.forward_messages(target, ids, entity, silent=True)
                     delivered = True
                 except Exception as e2:
-                    logger.warning(f"   [!] повтор пересылки не прошёл ({e2})")
+                    logger.warning(f"   [!] и со второй попытки переслать не вышло ({e2})")
             except Exception as e:
-                logger.warning(f"   [!] репост не прошёл ({e}); шлю текстом")
+                logger.warning(f"   [!] переслать не вышло ({e}) — отправляю текстом")
 
             if not delivered:
                 try:
@@ -502,7 +509,7 @@ async def main(dry_run=None, hours=None, progress=None, cancel=None):
                     # и репост, и текст не ушли — это ошибка доставки, не теряем пост
                     found -= 1
                     errors += 1
-                    logger.error(f"   [!] и текстом не ушло ({e2}); стоп по каналу — дошлём позже")
+                    logger.error(f"   [!] и текстом не ушло ({e2}). Дальше по этому каналу не иду, допришлём позже")
                     break
 
             committed_id = post_max          # доставлено — можно продвинуть
@@ -527,18 +534,19 @@ async def main(dry_run=None, hours=None, progress=None, cancel=None):
             break                            # отмена: состояние канала уже сохранено выше
 
     if dry_run:
-        logger.info(f"=== Готово (dry-run). Проверено {checked}, INTERESTING {found}, SKIP {skipped}, Ошибок {errors}.")
+        logger.info(f"Тестовая проверка закончена. Просмотрено постов: {checked}. "
+                    f"Интересных: {found}. Пропущено: {skipped}. Ошибок: {errors}.")
         if renamed:
-            logger.info(f"=== Сменили ссылку ({len(renamed)}) — поправь CHANNELS:")
+            logger.info(f"Сменили адрес ({len(renamed)}) — поправьте ссылки в разделе «Каналы»:")
             for c, link in renamed:
                 logger.info(f"      {c} -> {link}")
         if unreachable:
-            logger.info(f"=== НЕ ОТКРЫЛИСЬ ({len(unreachable)}):")
+            logger.info(f"Не открылись ({len(unreachable)}):")
             for c, err in unreachable:
                 logger.info(f"      {c}: {err}")
         if stopped:
-            logger.info("=== Проверка остановлена кнопкой. ===")
-        logger.info("=== Ничего не переслано, state.json не изменён. ===")
+            logger.info("Проверка остановлена кнопкой.")
+        logger.info("Ничего не переслано, закладки по каналам остались на месте.")
         await client.disconnect()
         progress("done", checked=checked, found=found, skipped=skipped,
                  errors=errors, stopped=stopped)
@@ -552,18 +560,19 @@ async def main(dry_run=None, hours=None, progress=None, cancel=None):
     # отключаемся ДО отправки итога: блокирующий requests при живом Telethon вешал прогон
     logger.info("Отключаюсь от Telegram...")
     await client.disconnect()
-    logger.info(f"=== Готово. Переслано постов: {found} ===")
+    logger.info(f"Проверка закончена. Переслано постов: {found}.")
 
     final_msg = (
-        "✅ Дайджест готов\n"
-        f"📥 Проверено постов: {checked}\n"
+        "✅ Проверка каналов закончена\n"
+        f"📥 Просмотрено постов: {checked}\n"
         f"📌 Интересных: {found}\n"
         f"🚫 Пропущено: {skipped}"
     )
     if errors:
         final_msg += f"\n⚠️ Ошибок: {errors} — дошлю в следующую проверку"
     if renamed:
-        final_msg += f"\n🔁 Сменили ссылку ({len(renamed)}) — работаю по id, поправь список:"
+        final_msg += (f"\n🔁 Сменили адрес ({len(renamed)}) — читаю их по прежней памяти, "
+                      "но ссылки лучше поправить в разделе «Каналы»:")
         for c, link in renamed[:10]:
             final_msg += f"\n   {c} → {link}"
     if unreachable:
@@ -571,9 +580,9 @@ async def main(dry_run=None, hours=None, progress=None, cancel=None):
         for c, err in unreachable[:10]:
             final_msg += f"\n   {c} — {err[:90]}"
     if llm_dead:
-        final_msg += "\n⛔ Проверка прервана: локальная модель не отвечает"
+        final_msg += "\n⛔ Проверка прервана: модель на этом компьютере не отвечает"
     if stopped:
-        final_msg += "\n⏹ Проверка остановлена кнопкой — остальное дочитаем в следующий раз"
+        final_msg += "\n⏹ Проверка остановлена кнопкой — остальное придёт в следующий раз"
     progress("done", checked=checked, found=found, skipped=skipped,
              errors=errors, stopped=stopped)
     return final_msg
@@ -586,7 +595,7 @@ if __name__ == "__main__":
     if "--dry-run" in sys.argv:
         asyncio.run(main())
     elif not acquire_lock():
-        logger.warning("[!] Уже идёт другая проверка — выхожу, чтобы не задвоить посты.")
+        logger.warning("[!] Уже идёт другая проверка — выхожу, чтобы посты не пришли дважды.")
     else:
         summary = None
         try:
