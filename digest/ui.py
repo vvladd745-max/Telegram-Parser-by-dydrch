@@ -299,12 +299,22 @@ def logo_label(widget, size=32):
     return label
 
 
+# Qt на Windows считает «системным моноширинным» Courier New — шрифт из
+# девяностых, с засечками и тонкими штрихами: длинный текст им читать тяжело.
+# Поэтому берём первый нормальный из тех, что есть в системе.
+MONO_FAMILIES = ("Cascadia Mono", "Consolas", "Segoe UI Mono",
+                 "DejaVu Sans Mono", "Courier New")
+
+
 def mono_font():
-    """Моноширинный шрифт журнала — на пункт мельче основного, но растёт
-    вместе с ним: иначе при крупных буквах журнал остаётся микроскопическим."""
+    """Моноширинный шрифт для журнала и текста фильтра. Размер тот же, что
+    у остального текста: читаемость важнее компактности."""
+    available = set(QFontDatabase.families())
+    family = next((name for name in MONO_FAMILIES if name in available), None)
     font = QFontDatabase.systemFont(QFontDatabase.FixedFont)
-    base = QApplication.font().pointSize()
-    font.setPointSize(max(8, base - 1))
+    if family:
+        font.setFamily(family)
+    font.setPointSize(max(8, QApplication.font().pointSize()))
     return font
 
 
