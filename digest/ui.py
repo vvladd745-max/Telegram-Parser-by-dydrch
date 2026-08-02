@@ -10,7 +10,8 @@
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QFontDatabase
 from PySide6.QtWidgets import (
-    QFrame, QLabel, QPlainTextEdit, QProgressBar, QPushButton, QVBoxLayout,
+    QFrame, QHBoxLayout, QLabel, QPlainTextEdit, QProgressBar, QPushButton,
+    QVBoxLayout, QWidget,
 )
 from PySide6.QtGui import QPalette
 
@@ -124,6 +125,37 @@ def nav_button(widget, text, active=False):
             f"QPushButton:hover {{ background: {color(widget, 'line')}; }}"
             f"QPushButton:disabled {{ color: {color(widget, 'muted')}; }}")
     return button
+
+
+def hint(widget, text):
+    """Кругляшок «?» с пояснением при наведении.
+
+    Пояснение пишем для человека, который впервые открыл программу:
+    что это, зачем нужно и где взять.
+    """
+    badge = QLabel("?")
+    badge.setAlignment(Qt.AlignCenter)
+    badge.setFixedSize(18, 18)
+    badge.setToolTip(text)
+    badge.setCursor(Qt.WhatsThisCursor)
+    badge.setObjectName("hint")
+    badge.setStyleSheet(
+        f"#hint {{ color: {color(widget, 'muted')};"
+        f" border: 1px solid {color(widget, 'line')}; border-radius: 9px;"
+        f" font-weight: bold; }}")
+    return badge
+
+
+def labeled(widget, text, tip):
+    """Подпись поля с кругляшком-подсказкой рядом."""
+    holder = QWidget()
+    row = QHBoxLayout(holder)
+    row.setContentsMargins(0, 0, 0, 0)
+    row.setSpacing(6)
+    row.addWidget(QLabel(text))
+    row.addWidget(hint(widget, tip))
+    row.addStretch(1)
+    return holder
 
 
 def set_nav_active(widget, button, active):

@@ -91,10 +91,23 @@ class LoginWizard(QWidget):
             "У этого аккаунта включён облачный пароль. Введите его — "
             "это не код из сообщения.",
             self.password_input, self.password_button))
+        # кнопки стоят рядом и не растягиваются во всю ширину:
+        # на полном экране растянутая кнопка выглядит плохо
+        for button in (self.channel_button, self.logout_button):
+            button.setMinimumHeight(72)
+            button.setFixedWidth(260)
+        done_buttons = QWidget()
+        done_row = QHBoxLayout(done_buttons)
+        done_row.setContentsMargins(0, 0, 0, 0)
+        done_row.setSpacing(12)
+        done_row.addWidget(self.channel_button)
+        done_row.addWidget(self.logout_button)
+        done_row.addStretch(1)
+
         self.pages.addWidget(_page(
             "Вход выполнен",
             "Дальше нужен канал, куда приложение будет присылать отобранные посты.",
-            self.who, self.channel_button, self.logout_button))
+            self.who, done_buttons))
 
         self.status = QLabel()
         self.status.setWordWrap(True)

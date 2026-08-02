@@ -60,9 +60,10 @@ class DigestRun(QThread):
                 self.failed.emit(f"Не удалось подготовить проверку: {e}")
                 return
 
+            # журнал проверки — всегда в один файл, и тестовой, и настоящей:
+            # иначе половина записей уходила бы в журнал окна
+            logs.setup("digest")
             if not self.dry_run:
-                # в журнал прогона, как при запуске из командной строки
-                logs.setup("digest")
                 if not digest.acquire_lock():
                     self.failed.emit(
                         "Уже идёт другая проверка — эту не запускаю, чтобы не задвоить посты.")

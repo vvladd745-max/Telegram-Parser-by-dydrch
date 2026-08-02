@@ -331,7 +331,7 @@ async def main(dry_run=None, hours=None, progress=None, cancel=None):
     for number, ch in enumerate(CHANNELS, 1):
         if cancelled():
             stopped = True
-            logger.info("=== Остановлено кнопкой: непроверенные каналы дочитаем в следующий прогон ===")
+            logger.info("=== Остановлено кнопкой: непроверенные каналы дочитаем в следующую проверку ===")
             break
         progress("channel", number=number, total=len(CHANNELS), name=str(ch))
         try:
@@ -394,7 +394,7 @@ async def main(dry_run=None, hours=None, progress=None, cancel=None):
             # Telegram просит подождать. Раньше это ловилось общим except и канал
             # молча выпадал из прогона.
             wait = min(int(getattr(e, "seconds", 60)) + 5, FLOOD_WAIT_CAP)
-            logger.warning(f"[{title}] FloodWait {wait} с при чтении — жду, канал дочитаю в следующий прогон.")
+            logger.warning(f"[{title}] FloodWait {wait} с при чтении — жду, канал дочитаю в следующую проверку.")
             await asyncio.sleep(wait)
             continue
         except Exception as e:
@@ -425,7 +425,7 @@ async def main(dry_run=None, hours=None, progress=None, cancel=None):
                     errors += 1
                     llm_dead = True
                     logger.error(f"   [!] МОДЕЛЬ НЕДОСТУПНА: {e}")
-                    logger.error("   [!] Прерываю весь прогон. Непроверенные посты дошлём в следующий раз.")
+                    logger.error("   [!] Прерываю всю проверку. Непроверенные посты дошлём в следующий раз.")
                     break
                 except Exception as e:
                     # ОШИБКА != SKIP: не теряем пост и не двигаем состояние дальше
@@ -434,7 +434,7 @@ async def main(dry_run=None, hours=None, progress=None, cancel=None):
                     logger.error(f"   [!] ошибка проверки поста (id {ids_err}): {e}")
                     if dry_run:
                         continue          # в тесте просто пропускаем этот пост
-                    logger.error("   [!] стоп по каналу — дошлём этот и следующие посты в след. прогон")
+                    logger.error("   [!] стоп по каналу — дошлём этот и следующие посты в след. проверку")
                     break                 # чекпоинт: committed_id остаётся на последнем удачном
             else:
                 interesting = has_media   # нет подписи, но есть медиа → на ревью (особое правило)
@@ -537,7 +537,7 @@ async def main(dry_run=None, hours=None, progress=None, cancel=None):
             for c, err in unreachable:
                 logger.info(f"      {c}: {err}")
         if stopped:
-            logger.info("=== Прогон остановлен кнопкой. ===")
+            logger.info("=== Проверка остановлена кнопкой. ===")
         logger.info("=== Ничего не переслано, state.json не изменён. ===")
         await client.disconnect()
         progress("done", checked=checked, found=found, skipped=skipped,
@@ -561,7 +561,7 @@ async def main(dry_run=None, hours=None, progress=None, cancel=None):
         f"🚫 Пропущено: {skipped}"
     )
     if errors:
-        final_msg += f"\n⚠️ Ошибок: {errors} — дошлю в следующий прогон"
+        final_msg += f"\n⚠️ Ошибок: {errors} — дошлю в следующую проверку"
     if renamed:
         final_msg += f"\n🔁 Сменили ссылку ({len(renamed)}) — работаю по id, поправь список:"
         for c, link in renamed[:10]:
@@ -571,9 +571,9 @@ async def main(dry_run=None, hours=None, progress=None, cancel=None):
         for c, err in unreachable[:10]:
             final_msg += f"\n   {c} — {err[:90]}"
     if llm_dead:
-        final_msg += "\n⛔ Прогон прерван: локальная модель не отвечает"
+        final_msg += "\n⛔ Проверка прервана: локальная модель не отвечает"
     if stopped:
-        final_msg += "\n⏹ Прогон остановлен кнопкой — остальное дочитаем в следующий раз"
+        final_msg += "\n⏹ Проверка остановлена кнопкой — остальное дочитаем в следующий раз"
     progress("done", checked=checked, found=found, skipped=skipped,
              errors=errors, stopped=stopped)
     return final_msg
@@ -586,7 +586,7 @@ if __name__ == "__main__":
     if "--dry-run" in sys.argv:
         asyncio.run(main())
     elif not acquire_lock():
-        logger.warning("[!] Уже идёт другой прогон (свежий lock-файл) — выхожу, чтобы не задвоить посты.")
+        logger.warning("[!] Уже идёт другая проверка — выхожу, чтобы не задвоить посты.")
     else:
         summary = None
         try:

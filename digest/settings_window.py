@@ -18,8 +18,14 @@ from PySide6.QtWidgets import (
     QPushButton, QSpinBox, QVBoxLayout, QWidget,
 )
 
+import ui
 from core import llm, settings
 from core.logs import logger
+
+
+TIP_API = 'Ключи вашего личного приложения Telegram — программа читает каналы от вашего имени.\n\nГде взять: my.telegram.org → войдите по номеру телефона → API development tools →\nзаполните простую форму (название любое). Telegram выдаст api_id (число)\nи api_hash (длинная строка из букв и цифр).\n\nВыдаются бесплатно и один раз, никому их не показывайте.'
+
+TIP_BOT = 'Бот присылает в Telegram короткий итог: сколько постов проверено и сколько отобрано.\n\nБез бота уведомлений не будет — придётся самому открывать окно программы\nи смотреть, закончилась проверка или ещё идёт.\n\nГде взять: напишите @BotFather команду /newbot — он выдаст токен.\nСвой chat_id узнаете у @userinfobot.'
 
 
 class ModelCheck(QThread):
@@ -71,8 +77,8 @@ class SettingsWindow(QWidget):
         self.target.setPlaceholderText("@канал или числовой адрес приватного канала")
 
         tg = QFormLayout()
-        tg.addRow("api_id:", self.api_id)
-        tg.addRow("api_hash:", self.api_hash)
+        tg.addRow(ui.labeled(self, "api_id:", TIP_API), self.api_id)
+        tg.addRow(ui.labeled(self, "api_hash:", TIP_API), self.api_hash)
         tg.addRow("Куда слать посты:", self.target)
         tg_box = QGroupBox("Доступ к Telegram")
         tg_box.setLayout(tg)
@@ -119,8 +125,18 @@ class SettingsWindow(QWidget):
         self.bot_token = _secret_field()
         self.bot_chat = QLineEdit()
         self.bot_chat.setPlaceholderText("числовой id получателя")
+        # кругляшок ставим рядом с самой галочкой: отдельной подписью
+        # получалась вторая строка про то же самое
+        bot_head = QWidget()
+        bot_row = QHBoxLayout(bot_head)
+        bot_row.setContentsMargins(0, 0, 0, 0)
+        bot_row.setSpacing(6)
+        bot_row.addWidget(self.bot_enabled)
+        bot_row.addWidget(ui.hint(self, TIP_BOT))
+        bot_row.addStretch(1)
+
         bot = QFormLayout()
-        bot.addRow(self.bot_enabled)
+        bot.addRow(bot_head)
         bot.addRow("Токен бота:", self.bot_token)
         bot.addRow("chat_id:", self.bot_chat)
         bot_box = QGroupBox("Отчёты")
