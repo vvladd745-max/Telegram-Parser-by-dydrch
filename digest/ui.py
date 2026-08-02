@@ -1,0 +1,199 @@
+"""Язык оформления окон: цвета, кнопки, карточки.
+
+Одно место на всё приложение — чтобы экраны выглядели одинаково и чтобы
+менять вид можно было здесь, а не в пяти файлах сразу.
+
+Главное правило: цвета берутся из системной палитры и подбираются под
+светлую или тёмную тему Windows. Прибитый гвоздями цвет однажды уже сделал
+список ошибок нечитаемым на тёмном фоне — повторять не будем.
+"""
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor, QFontDatabase
+from PySide6.QtWidgets import (
+    QFrame, QLabel, QPlainTextEdit, QProgressBar, QPushButton, QVBoxLayout,
+)
+from PySide6.QtGui import QPalette
+
+# Роли цветов. Слева — тёмная тема, справа — светлая.
+_PALETTE = {
+    "muted":  ("#9aa0a6", "#6b7075"),   # подписи, второстепенное
+    "accent": ("#5aa9ff", "#0b63ce"),   # главное действие
+    "ok":     ("#7bd88f", "#1a7f37"),   # всё хорошо
+    "bad":    ("#ff8a80", "#b00020"),   # ошибка, требует внимания
+    "line":   ("#3a3d41", "#d8dade"),   # рамки и разделители
+    "panel":  ("#242629", "#f6f7f9"),   # фон карточек и боковой панели
+}
+
+
+def is_dark(widget):
+    return widget.palette().color(QPalette.Window).lightness() < 128
+
+
+def color(widget, role):
+    """Цвет роли под текущую тему. role="text" — обычный текст из палитры."""
+    if role == "text":
+        return widget.palette().color(QPalette.WindowText).name()
+    dark, light = _PALETTE[role]
+    return dark if is_dark(widget) else light
+
+
+def label(text="", size=None, bold=False, tone=None, widget=None, wrap=False,
+          selectable=False):
+    """Подпись. tone — роль цвета из палитры выше (нужен widget)."""
+    lab = QLabel(text)
+    font = lab.font()
+    if size:
+        font.setPointSize(size)
+    font.setBold(bold)
+    lab.setFont(font)
+    if tone and widget is not None:
+        lab.setStyleSheet(f"color: {color(widget, tone)};")
+    lab.setWordWrap(wrap)
+    if selectable:
+        # пути длинные, их хочется выделить и скопировать
+        lab.setTextInteractionFlags(Qt.TextSelectableByMouse)
+    return lab
+
+
+def card(widget, caption, inner):
+    """Карточка с мелким заголовком и содержимым.
+
+    Стиль задаётся по имени объекта, а НЕ по типу QFrame: QLabel в Qt
+    унаследован от QFrame, и правило "QFrame {...}" разрисовало бы рамками
+    все подписи внутри.
+    """
+    frame = QFrame()
+    frame.setObjectName("card")
+    frame.setStyleSheet(
+        f"#card {{ background: {color(widget, 'panel')};"
+        f" border: 1px solid {color(widget, 'line')}; border-radius: 8px; }}")
+    layout = QVBoxLayout(frame)
+    layout.setContentsMargins(14, 10, 14, 12)
+    layout.setSpacing(8)
+    if caption:
+        cap = label(caption.upper(), size=8, bold=True, tone="muted", widget=widget)
+        layout.addWidget(cap)
+    layout.addLayout(inner)
+    return frame
+
+
+def primary_button(widget, text):
+    """Главное действие на экране. Такая кнопка должна быть одна."""
+    button = QPushButton(text)
+    accent = color(widget, "accent")
+    button.setMinimumHeight(32)
+    button.setCursor(Qt.PointingHandCursor)
+    button.setStyleSheet(
+        f"QPushButton {{ background: {accent}; color: white; border: none;"
+        f" border-radius: 6px; padding: 6px 18px; font-weight: bold; }}"
+        f"QPushButton:hover {{ background: {QColor(accent).lighter(115).name()}; }}"
+        f"QPushButton:disabled {{ background: {color(widget, 'line')};"
+        f" color: {color(widget, 'muted')}; }}")
+    return button
+
+
+def flat_button(widget, text):
+    """Обычное действие: рамка без заливки."""
+    button = QPushButton(text)
+    button.setMinimumHeight(30)
+    button.setCursor(Qt.PointingHandCursor)
+    button.setStyleSheet(
+        f"QPushButton {{ background: transparent; color: {color(widget, 'text')};"
+        f" border: 1px solid {color(widget, 'line')}; border-radius: 6px;"
+        f" padding: 5px 14px; }}"
+        f"QPushButton:hover {{ background: {color(widget, 'panel')}; }}"
+        f"QPushButton:disabled {{ color: {color(widget, 'muted')};"
+        f" border-color: {color(widget, 'panel')}; }}")
+    return button
+
+
+def nav_button(widget, text, active=False):
+    """Пункт боковой панели. Активный залит акцентом."""
+    button = QPushButton("   " + text)
+    button.setMinimumHeight(32)
+    button.setCursor(Qt.PointingHandCursor)
+    if active:
+        button.setStyleSheet(
+            f"QPushButton {{ background: {color(widget, 'accent')}; color: white;"
+            f" border: none; border-radius: 6px; padding: 6px 12px;"
+            f" text-align: left; font-weight: bold; }}")
+    else:
+        button.setStyleSheet(
+            f"QPushButton {{ background: transparent; color: {color(widget, 'text')};"
+            f" border: none; border-radius: 6px; padding: 6px 12px; text-align: left; }}"
+            f"QPushButton:hover {{ background: {color(widget, 'line')}; }}"
+            f"QPushButton:disabled {{ color: {color(widget, 'muted')}; }}")
+    return button
+
+
+def set_nav_active(widget, button, active):
+    """Перекрасить пункт меню: активный залит акцентом."""
+    if active:
+        button.setStyleSheet(
+            f"QPushButton {{ background: {color(widget, 'accent')}; color: white;"
+            f" border: none; border-radius: 6px; padding: 6px 12px;"
+            f" text-align: left; font-weight: bold; }}")
+    else:
+        button.setStyleSheet(
+            f"QPushButton {{ background: transparent; color: {color(widget, 'text')};"
+            f" border: none; border-radius: 6px; padding: 6px 12px; text-align: left; }}"
+            f"QPushButton:hover {{ background: {color(widget, 'line')}; }}"
+            f"QPushButton:disabled {{ color: {color(widget, 'muted')}; }}")
+
+
+def apply_base_font(app, delta=1):
+    """Чуть крупнее системного: на большом экране стандартный размер мелковат."""
+    font = app.font()
+    font.setPointSize(max(8, font.pointSize() + delta))
+    app.setFont(font)
+
+
+def style_table(widget, table):
+    """Таблица рисуется системным стилем и по умолчанию остаётся белой даже
+    в тёмной теме — белое пятно посреди окна. Приводим к общему виду."""
+    table.setObjectName("grid")
+    table.setShowGrid(False)
+    table.setAlternatingRowColors(True)
+    table.verticalHeader().setDefaultSectionSize(28)
+    table.setStyleSheet(
+        f"#grid {{ background: {color(widget, 'panel')};"
+        f" alternate-background-color: {color(widget, 'line')};"
+        f" color: {color(widget, 'text')};"
+        f" border: 1px solid {color(widget, 'line')}; border-radius: 6px; }}"
+        f"#grid::item {{ padding: 4px 6px; border: none; }}"
+        f"#grid::item:selected {{ background: {color(widget, 'accent')}; color: white; }}"
+        f"QHeaderView::section {{ background: {color(widget, 'panel')};"
+        f" color: {color(widget, 'muted')}; border: none;"
+        f" border-bottom: 1px solid {color(widget, 'line')}; padding: 6px; }}"
+        f"QTableCornerButton::section {{ background: {color(widget, 'panel')};"
+        f" border: none; }}")
+
+
+def console_box(widget):
+    """Окно журнала прогона: моноширинный шрифт, иначе колонки разъезжаются."""
+    box = QPlainTextEdit()
+    box.setReadOnly(True)
+    box.setMaximumBlockCount(2000)
+    font = QFontDatabase.systemFont(QFontDatabase.FixedFont)
+    font.setPointSize(9)
+    box.setFont(font)
+    box.setObjectName("console")
+    box.setStyleSheet(
+        f"#console {{ background: {color(widget, 'panel')};"
+        f" border: 1px solid {color(widget, 'line')}; border-radius: 6px;"
+        f" padding: 6px; }}")
+    return box
+
+
+def thin_progress(widget):
+    """Тонкая полоса без надписи поверх заливки: белый текст на синем
+    читается в тёмной теме и теряется в светлой. Подпись идёт рядом."""
+    bar = QProgressBar()
+    bar.setTextVisible(False)
+    bar.setFixedHeight(8)
+    bar.setObjectName("bar")
+    bar.setStyleSheet(
+        f"#bar {{ border: none; border-radius: 4px;"
+        f" background: {color(widget, 'line')}; }}"
+        f"#bar::chunk {{ background: {color(widget, 'accent')}; border-radius: 4px; }}")
+    return bar

@@ -1,0 +1,322 @@
+"""Экран настроек: то, что человек вводит руками.
+
+Каналы и текст интересов сюда НЕ входят — им нужны свои экраны, они будут
+отдельно. Здесь только поля: доступ к Telegram, глубина просмотра, модель и
+отчёты боту.
+
+Всё, что вводится, сохраняется по нажатию «Сохранить» и только теми ключами,
+которые есть на экране: список каналов и прочее остаётся нетронутым.
+
+Секреты — api_hash, токен бота, ключ модели — уходят не в файл, а в Диспетчер
+учётных данных Windows; в settings.json на их месте остаётся пусто. Если
+хранилище недоступно, значение остаётся в файле: потерять введённый пароль
+хуже, чем сохранить его открытым текстом.
+"""
+from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtWidgets import (
+    QCheckBox, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
+    QPushButton, QSpinBox, QVBoxLayout, QWidget,
+)
+
+from core import llm, settings
+from core.logs import logger
+
+
+class ModelCheck(QThread):
+    """Проверка модели в отдельном потоке: сеть не должна морозить окно."""
+
+    done = Signal(bool, str)
+
+    def __init__(self, url, name, key, parent=None):
+        super().__init__(parent)
+        self._args = (url, name, key)
+
+    def run(self):
+        url, name, key = self._args
+        ok, text = llm.probe(url=url, name=name, key=key)
+        logger.info(f"Проверка модели: {'успех' if ok else 'неудача'} — {text}")
+        self.done.emit(ok, text)
+
+
+def _secret_field():
+    field = QLineEdit()
+    field.setEchoMode(QLineEdit.Password)
+    return field
+
+
+def _hours_field(low, high, suffix=" ч"):
+    box = QSpinBox()
+    box.setRange(low, high)
+    box.setSuffix(suffix)
+    return box
+
+
+class SettingsWindow(QWidget):
+    """Страница настроек внутри главного окна."""
+
+    saved = Signal()
+    cancelled = Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Настройки")
+        self.setMinimumWidth(560)
+        self._check = None
+
+        # --- доступ к Telegram ---
+        self.api_id = QLineEdit()
+        self.api_id.setPlaceholderText("число с my.telegram.org")
+        self.api_hash = _secret_field()
+        self.target = QLineEdit()
+        self.target.setPlaceholderText("@канал или числовой адрес приватного канала")
+
+        tg = QFormLayout()
+        tg.addRow("api_id:", self.api_id)
+        tg.addRow("api_hash:", self.api_hash)
+        tg.addRow("Куда слать посты:", self.target)
+        tg_box = QGroupBox("Доступ к Telegram")
+        tg_box.setLayout(tg)
+
+        # --- глубина просмотра ---
+        self.lookback = _hours_field(1, 240)
+        self.dry_run = _hours_field(1, 240)
+        depth = QFormLayout()
+        depth.addRow("Глубина первого запуска:", self.lookback)
+        depth.addRow("Окно тестового прогона:", self.dry_run)
+        depth_box = QGroupBox("Насколько глубоко смотреть")
+        depth_box.setLayout(depth)
+        self.lookback.setToolTip(
+            "За сколько часов брать посты, когда канал читается впервые. "
+            "Дальше программа помнит, где остановилась, и берёт только новое."
+        )
+        self.dry_run.setToolTip("Окно для тестового прогона, который ничего не пересылает.")
+
+        # --- модель ---
+        self.model_url = QLineEdit()
+        self.model_name = QLineEdit()
+        self.model_key = _secret_field()
+        self.model_key.setPlaceholderText("для LM Studio не нужен")
+        self.check_button = QPushButton("Проверить модель")
+        self.check_button.clicked.connect(self.run_check)
+        self.check_result = QLabel()
+        self.check_result.setWordWrap(True)
+        self.check_result.setTextInteractionFlags(Qt.TextSelectableByMouse)
+
+        model = QFormLayout()
+        model.addRow("Адрес:", self.model_url)
+        model.addRow("Имя модели:", self.model_name)
+        model.addRow("Ключ:", self.model_key)
+        model.addRow("", self.check_button)
+        model.addRow("", self.check_result)
+        model_box = QGroupBox("Модель")
+        model_box.setLayout(model)
+
+        # --- отчёты боту ---
+        self.bot_enabled = QCheckBox("Присылать отчёт о прогоне ботом")
+        self.bot_enabled.toggled.connect(self._sync_bot_fields)
+        self.bot_token = _secret_field()
+        self.bot_chat = QLineEdit()
+        self.bot_chat.setPlaceholderText("числовой id получателя")
+        bot = QFormLayout()
+        bot.addRow(self.bot_enabled)
+        bot.addRow("Токен бота:", self.bot_token)
+        bot.addRow("chat_id:", self.bot_chat)
+        bot_box = QGroupBox("Отчёты")
+        bot_box.setLayout(bot)
+
+        # --- вид ---
+        self.matrix_box = QCheckBox("Печатать журнал прогона как в «Матрице»")
+        self.matrix_box.setToolTip(
+            "Посимвольная печать зелёным. Снимите галочку — включится обычный "
+            "информативный вывод: строки появляются целиком и сразу.")
+        view = QVBoxLayout()
+        view.addWidget(self.matrix_box)
+        view_box = QGroupBox("Вид")
+        view_box.setLayout(view)
+
+        # --- низ окна ---
+        self.show_secrets = QCheckBox("Показать секреты")
+        self.show_secrets.toggled.connect(self._sync_secret_echo)
+
+        self.message = QLabel()
+        self.message.setWordWrap(True)
+
+        save_button = QPushButton("Сохранить")
+        save_button.setDefault(True)
+        save_button.clicked.connect(self.save)
+        cancel_button = QPushButton("Отмена")
+        cancel_button.clicked.connect(self.cancel)
+
+        bottom = QHBoxLayout()
+        bottom.addWidget(self.show_secrets)
+        bottom.addStretch(1)
+        bottom.addWidget(cancel_button)
+        bottom.addWidget(save_button)
+
+        layout = QVBoxLayout(self)
+        for box in (tg_box, depth_box, model_box, bot_box, view_box):
+            layout.addWidget(box)
+        layout.addWidget(self.message)
+        layout.addLayout(bottom)
+
+        # закрытое окно не должно оставаться жить у родителя
+        self.setAttribute(Qt.WA_DeleteOnClose)
+        self.load_values()
+
+    # ---------- чтение и запись ----------
+
+    def load_values(self):
+        """Заполняет поля тем, что сейчас в settings.json."""
+        try:
+            settings.load(force=True)
+        except settings.SettingsError as e:
+            self.show_message(str(e), error=True)
+            return
+        self.api_id.setText(str(settings.get("telegram.api_id") or ""))
+        self.api_hash.setText(settings.get_secret("telegram.api_hash"))
+        self.target.setText(str(settings.get("telegram.target") or ""))
+        self.lookback.setValue(int(settings.get("digest.lookback_hours") or 28))
+        self.dry_run.setValue(int(settings.get("digest.dry_run_hours") or 2))
+        self.model_url.setText(str(settings.get("model.url") or ""))
+        self.model_name.setText(str(settings.get("model.name") or ""))
+        self.model_key.setText(settings.get_secret("model.api_key"))
+        self.bot_enabled.setChecked(bool(settings.get("bot.enabled")))
+        self.bot_token.setText(settings.get_secret("bot.token"))
+        self.bot_chat.setText(str(settings.get("bot.chat_id") or ""))
+        self.matrix_box.setChecked(bool(settings.get("ui.matrix", True)))
+        self._sync_bot_fields()
+        self._sync_secret_echo()
+        self._saved_snapshot = self.snapshot()
+
+    def collect(self):
+        """Проверяет введённое. Возвращает (значения, список претензий)."""
+        troubles = []
+
+        api_id_text = self.api_id.text().strip()
+        api_id = 0
+        if api_id_text:
+            if api_id_text.isdigit():
+                api_id = int(api_id_text)
+            else:
+                troubles.append("api_id — это число, буквы и знаки в нём не бывают.")
+
+        chat_text = self.bot_chat.text().strip()
+        chat_id = 0
+        if chat_text:
+            if chat_text.lstrip("-").isdigit():
+                chat_id = int(chat_text)
+            else:
+                troubles.append("chat_id — это число, его выдаёт @userinfobot.")
+
+        target = self.target.text().strip()
+        if self.bot_enabled.isChecked() and not self.bot_token.text().strip():
+            troubles.append("Отчёты боту включены, но токен бота пуст.")
+
+        values = {
+            "telegram": {"api_id": api_id,
+                         "api_hash": self.api_hash.text().strip(),
+                         "target": target},
+            "digest": {"lookback_hours": self.lookback.value(),
+                       "dry_run_hours": self.dry_run.value()},
+            "model": {"url": self.model_url.text().strip(),
+                      "name": self.model_name.text().strip(),
+                      "api_key": self.model_key.text().strip()},
+            "bot": {"enabled": self.bot_enabled.isChecked(),
+                    "token": self.bot_token.text().strip(),
+                    "chat_id": chat_id},
+            "ui": {"matrix": self.matrix_box.isChecked()},
+        }
+        return values, troubles
+
+    def save(self):
+        values, troubles = self.collect()
+        if troubles:
+            self.show_message(" ".join(troubles), error=True)
+            return
+        try:
+            data = settings.load(force=True)
+            for section, fields in values.items():
+                data.setdefault(section, {}).update(fields)
+            # секреты уводим в Диспетчер учётных данных, а в файле оставляем пусто.
+            # Если хранилище недоступно, значение остаётся в файле — иначе
+            # человек ввёл бы пароль, а он бы просто пропал.
+            for path in settings.SECRET_PATHS:
+                section, key = path.split(".", 1)
+                secret = data.get(section, {}).get(key, "")
+                if secret and settings.set_secret(path, secret):
+                    data[section][key] = ""
+            settings.save(data)
+        except settings.SettingsError as e:
+            self.show_message(str(e), error=True)
+            return
+        except OSError as e:
+            self.show_message(f"Не удалось записать настройки: {e}", error=True)
+            return
+        logger.info("Настройки сохранены из окна.")
+        self._saved_snapshot = self.snapshot()
+        self.saved.emit()
+
+    # ---------- страница ----------
+
+    def snapshot(self):
+        """Слепок полей — чтобы понять, есть ли несохранённые правки."""
+        return (self.api_id.text(), self.api_hash.text(), self.target.text(),
+                self.lookback.value(), self.dry_run.value(),
+                self.model_url.text(), self.model_name.text(), self.model_key.text(),
+                self.bot_enabled.isChecked(), self.bot_token.text(), self.bot_chat.text(),
+                self.matrix_box.isChecked())
+
+    def has_changes(self):
+        return self.snapshot() != self._saved_snapshot
+
+    def page_show(self):
+        """Вход на страницу: перечитываем настройки с диска."""
+        self.load_values()
+
+    def cancel(self):
+        self.load_values()
+        self.cancelled.emit()
+
+    # ---------- проверка модели ----------
+
+    def run_check(self):
+        if self._check is not None and self._check.isRunning():
+            return
+        self.check_button.setEnabled(False)
+        self.check_result.setStyleSheet("")
+        self.check_result.setText("Спрашиваю модель...")
+        self._check = ModelCheck(self.model_url.text().strip(),
+                                 self.model_name.text().strip(),
+                                 self.model_key.text().strip(), self)
+        self._check.done.connect(self.on_check_done)
+        self._check.start()
+
+    def on_check_done(self, ok, text):
+        self.check_button.setEnabled(True)
+        self.check_result.setStyleSheet("" if ok else f"color: {self.error_color()};")
+        self.check_result.setText(text)
+
+    # ---------- мелочи оформления ----------
+
+    def _sync_secret_echo(self):
+        mode = QLineEdit.Normal if self.show_secrets.isChecked() else QLineEdit.Password
+        for field in (self.api_hash, self.model_key, self.bot_token):
+            field.setEchoMode(mode)
+
+    def _sync_bot_fields(self):
+        on = self.bot_enabled.isChecked()
+        self.bot_token.setEnabled(on)
+        self.bot_chat.setEnabled(on)
+
+    def show_message(self, text, error=False):
+        self.message.setStyleSheet(f"color: {self.error_color()};" if error else "")
+        self.message.setText(text)
+
+    def error_color(self):
+        background = self.palette().color(self.backgroundRole())
+        return "#ff8a80" if background.lightness() < 128 else "#b00020"
+
+    def closeEvent(self, event):
+        if self._check is not None and self._check.isRunning():
+            self._check.wait(3000)
+        super().closeEvent(event)

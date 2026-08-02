@@ -1,0 +1,46 @@
+# Секреты и состояние digest
+settings.json
+settings.json.tmp
+digest/state.json
+digest/*.session
+digest/*.session-journal
+digest/digest.lock
+*.session
+*.session-journal
+
+# Логи и служебные файлы
+logs/
+last_run.txt
+
+# Мостик digest -> topic_finder (свежие затравки, не секрет, но постоянно меняющиеся данные)
+fresh_seeds.json
+
+# topic_finder — проект закрыт, не трогаем, но его рабочие данные тоже не коммитим
+topic_finder/out/
+topic_finder/cache/
+
+# Python-мусор
+__pycache__/
+*.pyc
+
+# Локальные настройки Claude Code (машинно-специфичные, не для репозитория)
+.claude/settings.local.json
+
+# Ярлыки рабочего стола, случайно оказавшиеся в папке проекта
+всякое другое/
+
+# Сборка PyInstaller
+build/
+dist/
+
+# --- Личное: остаётся на диске, но в публичный репозиторий не уезжает ---
+# Договорённости с ассистентом и его настройки — не часть проекта.
+CLAUDE.md
+.claude/
+# topic_finder — отдельный личный инструмент со своими накопленными данными.
+topic_finder/
+# Вспомогательные штуки под конкретную машину.
+daily_guard.py
+diag.py
+run_all.bat
+digest/run.bat
