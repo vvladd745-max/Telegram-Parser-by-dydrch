@@ -8,13 +8,15 @@
 import os
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QFontDatabase
 from PySide6.QtWidgets import (
     QHBoxLayout, QLabel, QMessageBox, QPlainTextEdit, QPushButton, QVBoxLayout, QWidget,
 )
 
+import ui
 from core import paths, settings
 from core.logs import logger
+
+HEAD_TEXT = 'Здесь вы объясняете модели, какие посты вам нужны. Этот текст уходит ей вместе с каждым постом, и по нему принимается решение — переслать пост или пропустить.\n\nПишите обычными словами: перечислите темы, которые вам интересны, и то, что нужно отсеивать. Чем понятнее сформулировано, тем точнее отбор.\n\nСлова INTERESTING и SKIP обязательны и удалять их нельзя. Модель отвечает одним словом, а программа ищет в ответе ровно эти два. Без них фильтр не сломается заметно — он начнёт молча пропускать всё подряд, и в канал польётся поток.'
 
 VERDICTS = ("INTERESTING", "SKIP")
 # ориентир по длине: промпт плюс сам пост должны помещаться в окно модели
@@ -52,14 +54,12 @@ class InterestsWindow(QWidget):
         self.setWindowTitle("Интересы")
         self.resize(820, 640)
 
-        head = QLabel(
-            "По этому тексту модель решает, интересен ли пост. Правьте осторожно: "
-            "текст выверен прогонами, и каждая переформулировка меняет отбор."
-        )
-        head.setWordWrap(True)
+        head = ui.label(HEAD_TEXT, wrap=True)
 
         self.editor = QPlainTextEdit()
-        self.editor.setFont(QFontDatabase.systemFont(QFontDatabase.FixedFont))
+        # моноширинный и того же размера, что журнал: длинный текст фильтра
+        # обычным шрифтом читать тяжело
+        self.editor.setFont(ui.mono_font())
         self.editor.setLineWrapMode(QPlainTextEdit.WidgetWidth)
         self.editor.textChanged.connect(self.update_counter)
 
@@ -68,9 +68,10 @@ class InterestsWindow(QWidget):
         self.message.setWordWrap(True)
         self.message.setTextInteractionFlags(Qt.TextSelectableByMouse)
 
-        self.restore_button = QPushButton("Вернуть заготовку")
+        self.restore_button = QPushButton("Вернуть шаблон по умолчанию")
         self.restore_button.setToolTip(
-            "Заменит текст на тот, что пришёл вместе с программой.")
+            "Заменит текст на короткую заготовку, которая пришла вместе "
+            "с программой. Ваши правки в окне пропадут.")
         self.restore_button.clicked.connect(self.restore_template)
 
         save_button = QPushButton("Сохранить")
@@ -110,23 +111,22 @@ class InterestsWindow(QWidget):
         self._sync_restore_button()
 
     def _sync_restore_button(self):
-        """В портативном режиме заготовка и рабочий файл — это один и тот же
-        файл. Кнопка «вернуть заготовку» тогда не значит ничего и только
-        сбивает с толку."""
-        template = paths.interests_template()
-        same_file = os.path.abspath(template) == os.path.abspath(paths.interests_file())
-        self.restore_button.setEnabled(os.path.exists(template) and not same_file)
-        if same_file:
+        """Кнопка живёт, только если шаблон вообще есть рядом с программой."""
+        exists = os.path.exists(paths.interests_template())
+        self.restore_button.setEnabled(exists)
+        if not exists:
             self.restore_button.setToolTip(
-                "Здесь программа работает из своей папки, и заготовка — это тот же "
-                "самый файл. Возвращать нечего.")
+                "Файл шаблона не найден рядом с программой — возвращать нечего.")
 
     def restore_template(self):
-        answer = QMessageBox.question(
-            self, "Вернуть заготовку",
-            "Заменить текст на тот, что пришёл вместе с программой? "
-            "Ваши правки в окне пропадут.")
-        if answer != QMessageBox.Yes:
+        answer = QMessageBox.warning(
+            self, "Вы уверены?",
+            "Текст фильтра будет заменён на короткий шаблон по умолчанию.\n"
+            "Всё, что вы написали, пропадёт.\n\n"
+            "Если текст уже сохранён, он всё равно останется в файле, пока "
+            "вы не нажмёте «Сохранить».",
+            QMessageBox.Ok | QMessageBox.Cancel, QMessageBox.Cancel)
+        if answer != QMessageBox.Ok:
             return
         try:
             with open(paths.interests_template(), "r", encoding="utf-8-sig") as f:
@@ -134,7 +134,7 @@ class InterestsWindow(QWidget):
         except OSError as e:
             self.show_message(f"Не удалось прочитать заготовку: {e}", error=True)
             return
-        self.show_message("Заготовка подставлена. Нажмите «Сохранить», чтобы записать.")
+        self.show_message("Шаблон подставлен. Нажмите «Сохранить», чтобы записать.")
 
     def save(self):
         text = self.editor.toPlainText()

@@ -29,6 +29,9 @@ APP_NAME = "TelegramDigest"
 SETTINGS_NAME = "settings.json"
 SETTINGS_TEMPLATE_NAME = "settings.default.json"
 INTERESTS_NAME = "interests.txt"
+# Шаблон отдельным файлом, а не тем же самым: раньше в портативном режиме
+# заготовка и рабочий файл совпадали, и «вернуть шаблон» было нечем.
+INTERESTS_TEMPLATE_NAME = "interests.default.txt"
 STATE_NAME = "state.json"
 LOCK_NAME = "digest.lock"
 DIGEST_DIRNAME = "digest"
@@ -78,7 +81,7 @@ def settings_template():
 
 
 def interests_template():
-    return os.path.join(code_dir(), INTERESTS_NAME)
+    return os.path.join(code_dir(), INTERESTS_TEMPLATE_NAME)
 
 
 def mode():

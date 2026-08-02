@@ -15,7 +15,7 @@ ROOT = os.path.abspath(os.getcwd())
 # settings.default.json — без api_id, api_hash, токена бота и chat_id.
 DATA = [
     (os.path.join(ROOT, "settings.default.json"), "."),
-    (os.path.join(ROOT, "interests.txt"), "."),
+    (os.path.join(ROOT, "interests.default.txt"), "."),
 ]
 
 HIDDEN = [
