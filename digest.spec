@@ -17,6 +17,14 @@ DATA = [
     (os.path.join(ROOT, "settings.default.json"), "."),
     (os.path.join(ROOT, "interests.default.txt"), "."),
 ]
+# Картинки кладём, только если они есть: без них программа работает,
+# просто со стандартной иконкой Windows.
+for picture in ("icon.ico", "logo.png"):
+    if os.path.exists(os.path.join(ROOT, picture)):
+        DATA.append((os.path.join(ROOT, picture), "."))
+
+ICON = os.path.join(ROOT, "icon.ico")
+ICON = ICON if os.path.exists(ICON) else None
 
 HIDDEN = [
     # digest.py импортируется на ходу, из потока прогона: анализатор
@@ -65,6 +73,7 @@ exe = EXE(
     # Для разбора поломок: DIGEST_BUILD_CONSOLE=1 pyinstaller digest.spec
     console=bool(os.environ.get("DIGEST_BUILD_CONSOLE")),
     disable_windowed_traceback=False,
+    icon=ICON,
 )
 
 coll = COLLECT(

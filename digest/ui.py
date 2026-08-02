@@ -8,12 +8,16 @@
 список ошибок нечитаемым на тёмном фоне — повторять не будем.
 """
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QFontDatabase
+import os
+
+from PySide6.QtGui import QColor, QFontDatabase, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QApplication, QFrame, QHBoxLayout, QLabel, QPlainTextEdit, QProgressBar,
     QPushButton, QVBoxLayout, QWidget,
 )
 from PySide6.QtGui import QPalette
+
+from core import paths
 
 # Роли цветов. Слева — тёмная тема, справа — светлая.
 _PALETTE = {
@@ -271,6 +275,28 @@ def style_table(widget, table):
         f" border-bottom: 1px solid {color(widget, 'line')}; padding: 6px; }}"
         f"QTableCornerButton::section {{ background: {color(widget, 'panel')};"
         f" border: none; }}")
+
+
+def app_icon():
+    """Иконка окна. Если файла нет — None, и окно останется со стандартной."""
+    path = paths.icon_file()
+    return QIcon(path) if os.path.exists(path) else None
+
+
+def logo_label(widget, size=32):
+    """Небольшой значок для интерфейса. Нет файла — нет и значка:
+    пустой рамки на его месте быть не должно."""
+    path = paths.logo_file()
+    if not os.path.exists(path):
+        return None
+    pixmap = QPixmap(path)
+    if pixmap.isNull():
+        return None
+    label = QLabel()
+    label.setPixmap(pixmap.scaled(size, size, Qt.KeepAspectRatio,
+                                  Qt.SmoothTransformation))
+    label.setFixedSize(size, size)
+    return label
 
 
 def mono_font():

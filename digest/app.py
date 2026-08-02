@@ -27,6 +27,7 @@ from wizard import LoginWizard
 from settings_window import SettingsWindow
 from channels_window import ChannelsWindow
 from interests_window import InterestsWindow
+from about import AboutPage
 from runner import DigestRun
 from console import RunConsole
 import ui
@@ -44,13 +45,14 @@ MODE_TEXT = {
 # а на самой странице стоит полный заголовок.
 NAV_RUN = "Проверка каналов"
 
-PAGE_RUN, PAGE_SETTINGS, PAGE_CHANNELS, PAGE_INTERESTS, PAGE_LOGIN = range(5)
+PAGE_RUN, PAGE_SETTINGS, PAGE_CHANNELS, PAGE_INTERESTS, PAGE_LOGIN, PAGE_ABOUT = range(6)
 PAGE_TITLES = {
     PAGE_RUN: "Проверка Telegram-каналов",
     PAGE_SETTINGS: "Настройки",
     PAGE_CHANNELS: "Каналы",
     PAGE_INTERESTS: "Интересы",
     PAGE_LOGIN: "Вход в Telegram",
+    PAGE_ABOUT: "О программе",
 }
 
 CONSOLE_HINT = ("Здесь будет видно, что происходит во время проверки: "
@@ -61,6 +63,9 @@ class MainWindow(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle(APP_TITLE)
+        icon = ui.app_icon()
+        if icon is not None:
+            self.setWindowIcon(icon)
         self.resize(940, 660)
         self.run = None      # текущая проверка, пока идёт
         self.restart_requested = False   # окно просит пересобрать себя
@@ -101,7 +106,7 @@ class MainWindow(QWidget):
         metrics = QFontMetrics(self.font())
         widest = max(metrics.horizontalAdvance(text) for text in
                      (NAV_RUN, "Вход в Telegram", "Перечитать настройки",
-                      "✓ Готово к работе"))
+                      "О программе", "✓ Готово к работе"))
         side.setFixedWidth(max(216, widest + 84))
         side.setObjectName("sidebar")
         side.setStyleSheet(
@@ -111,7 +116,13 @@ class MainWindow(QWidget):
         layout = QVBoxLayout(side)
         layout.setContentsMargins(16, 18, 16, 16)
         layout.setSpacing(6)
-        layout.addWidget(ui.label(APP_TITLE, size=14, bold=True, wrap=True))
+        head = QHBoxLayout()
+        head.setSpacing(8)
+        logo = ui.logo_label(self, size=28)
+        if logo is not None:
+            head.addWidget(logo, 0, Qt.AlignTop)
+        head.addWidget(ui.label(APP_TITLE, size=14, bold=True, wrap=True), 1)
+        layout.addLayout(head)
         layout.addWidget(ui.label("Отбор постов из Telegram", tone="muted",
                                   widget=self, wrap=True))
         layout.addSpacing(14)
@@ -121,12 +132,14 @@ class MainWindow(QWidget):
         self.channels_button = ui.nav_button(self, "Каналы")
         self.interests_button = ui.nav_button(self, "Интересы")
         self.login_button = ui.nav_button(self, "Вход в Telegram")
+        self.about_button = ui.nav_button(self, "О программе")
         self.nav_buttons = {
             PAGE_RUN: self.run_nav,
             PAGE_SETTINGS: self.settings_button,
             PAGE_CHANNELS: self.channels_button,
             PAGE_INTERESTS: self.interests_button,
             PAGE_LOGIN: self.login_button,
+            PAGE_ABOUT: self.about_button,
         }
         for index, button in self.nav_buttons.items():
             button.clicked.connect(lambda _=False, i=index: self.go_to(i))
@@ -148,11 +161,13 @@ class MainWindow(QWidget):
         self.channels_page = ChannelsWindow(self.telegram)
         self.interests_page = InterestsWindow()
         self.login_page = LoginWizard(self.telegram)
+        self.about_page = AboutPage()
         self.page_widgets = {
             PAGE_SETTINGS: self.settings_page,
             PAGE_CHANNELS: self.channels_page,
             PAGE_INTERESTS: self.interests_page,
             PAGE_LOGIN: self.login_page,
+            PAGE_ABOUT: self.about_page,
         }
 
         self.pages.insertWidget(PAGE_RUN, self._build_main())
@@ -487,6 +502,9 @@ def main():
     # разовый переезд: секреты из settings.json в Диспетчер учётных данных Windows
     settings.migrate_secrets()
     app = QApplication(sys.argv)
+    icon = ui.app_icon()
+    if icon is not None:
+        app.setWindowIcon(icon)
     # Окно собирается заново, если человек сменил тему или размер букв:
     # эти вещи задаются при создании виджетов и на лету не переключаются.
     while True:

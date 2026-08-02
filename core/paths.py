@@ -32,6 +32,11 @@ INTERESTS_NAME = "interests.txt"
 # Шаблон отдельным файлом, а не тем же самым: раньше в портативном режиме
 # заготовка и рабочий файл совпадали, и «вернуть шаблон» было нечем.
 INTERESTS_TEMPLATE_NAME = "interests.default.txt"
+# Картинки едут вместе с программой: .ico для окна и .exe, .png для
+# самого интерфейса. Их может не быть — тогда программа просто
+# обходится без них, а не падает.
+ICON_NAME = "icon.ico"
+LOGO_NAME = "logo.png"
 STATE_NAME = "state.json"
 LOCK_NAME = "digest.lock"
 DIGEST_DIRNAME = "digest"
@@ -82,6 +87,14 @@ def settings_template():
 
 def interests_template():
     return os.path.join(code_dir(), INTERESTS_TEMPLATE_NAME)
+
+
+def icon_file():
+    return os.path.join(code_dir(), ICON_NAME)
+
+
+def logo_file():
+    return os.path.join(code_dir(), LOGO_NAME)
 
 
 def mode():
