@@ -80,6 +80,10 @@ class SettingsWindow(QWidget):
         tg.addRow(ui.labeled(self, "api_id:", TIP_API), self.api_id)
         tg.addRow(ui.labeled(self, "api_hash:", TIP_API), self.api_hash)
         tg.addRow("Куда слать посты:", self.target)
+        tg.addRow("", ui.link(self, "Получить api_id и api_hash на my.telegram.org",
+                              "https://my.telegram.org/apps",
+                              "Откроется в браузере. Войдите по номеру телефона, "
+                              "раздел API development tools."))
         tg_box = QGroupBox("Доступ к Telegram")
         tg_box.setLayout(tg)
 
@@ -116,6 +120,9 @@ class SettingsWindow(QWidget):
         model.addRow("Ключ:", self.model_key)
         model.addRow("", self.check_button)
         model.addRow("", self.check_result)
+        model.addRow("", ui.link(self, "Скачать LM Studio", "https://lmstudio.ai",
+                                 "Программа, которая запускает ИИ-модель "
+                                 "на вашем компьютере."))
         model_box = QGroupBox("ИИ-модель для анализа постов")
         model_box.setLayout(model)
 
@@ -135,10 +142,25 @@ class SettingsWindow(QWidget):
         bot_row.addWidget(ui.hint(self, TIP_BOT))
         bot_row.addStretch(1)
 
+        bot_links = QWidget()
+        bot_links_row = QHBoxLayout(bot_links)
+        bot_links_row.setContentsMargins(0, 0, 0, 0)
+        bot_links_row.setSpacing(16)
+        bot_links_row.addWidget(ui.link(self, "Создать бота — @BotFather",
+                                        "https://t.me/BotFather",
+                                        "Откроется в Telegram. Команда /newbot — "
+                                        "и он выдаст токен."))
+        bot_links_row.addWidget(ui.link(self, "Узнать свой chat_id — @userinfobot",
+                                        "https://t.me/userinfobot",
+                                        "Откроется в Telegram. Напишите ему что угодно, "
+                                        "он ответит вашим номером."))
+        bot_links_row.addStretch(1)
+
         bot = QFormLayout()
         bot.addRow(bot_head)
         bot.addRow("Токен бота:", self.bot_token)
         bot.addRow("chat_id:", self.bot_chat)
+        bot.addRow("", bot_links)
         bot_box = QGroupBox("Отчёты")
         bot_box.setLayout(bot)
 

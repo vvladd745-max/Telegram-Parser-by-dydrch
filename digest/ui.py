@@ -131,6 +131,21 @@ def nav_button(widget, text, active=False):
     return button
 
 
+def link(widget, text, url, tip=""):
+    """Кликабельная ссылка. Открывается в браузере, адреса t.me — в Telegram.
+
+    Нужна там, где человеку надо что-то раздобыть: ключи, бота, модель.
+    Написать «зайдите на my.telegram.org» мало — адрес придётся перепечатывать
+    руками, а это лишний повод ошибиться.
+    """
+    label = QLabel(f'<a href="{url}">{text}</a>')
+    label.setOpenExternalLinks(True)
+    label.setTextInteractionFlags(Qt.TextBrowserInteraction)
+    label.setToolTip(tip or url)
+    label.setCursor(Qt.PointingHandCursor)
+    return label
+
+
 def hint(widget, text):
     """Кругляшок «?» с пояснением при наведении.
 

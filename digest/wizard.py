@@ -4,6 +4,7 @@
 введённое в рабочий поток (digest/tgclient.py), а обратно получает сигналы.
 Поэтому оно не замирает, пока Telegram думает.
 """
+import ui
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QStackedWidget, QWidget,
@@ -85,7 +86,9 @@ class LoginWizard(QWidget):
             "Код подтверждения",
             "Telegram прислал код в само приложение Telegram, а не по SMS. "
             "Посмотрите там.",
-            self.code_input, self.code_button, self.restart_button))
+            self.code_input, self.code_button, self.restart_button,
+            ui.link(self, "Открыть Telegram", "https://t.me",
+                    "Откроется приложение Telegram, где лежит код.")))
         self.pages.addWidget(_page(
             "Пароль двухфакторной защиты",
             "У этого аккаунта включён облачный пароль. Введите его — "
