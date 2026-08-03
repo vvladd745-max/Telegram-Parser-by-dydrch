@@ -258,6 +258,33 @@ def migrate_secrets():
     return moved
 
 
+def save_partial(values):
+    """Записать только перечисленные поля, остальные настройки не трогая.
+
+    values — словарь вида {"telegram": {"api_id": 123}}: разделы и поля
+    накладываются поверх файла, всё прочее остаётся как было.
+
+    Секреты уводятся в Диспетчер учётных данных, а в файле на их месте
+    остаётся пусто. Если хранилище недоступно, значение остаётся в файле:
+    потерять введённое хуже, чем сохранить его открытым текстом.
+
+    Нужно окнам, которые правят кусочек настроек, — например странице входа
+    в Telegram, где человек вводит api_id и api_hash, но больше ничего.
+    """
+    data = load(force=True)
+    for section, fields in (values or {}).items():
+        data.setdefault(section, {}).update(fields)
+    for path in SECRET_PATHS:
+        section, key = path.split(".", 1)
+        if section not in (values or {}) or key not in (values.get(section) or {}):
+            continue                       # это поле сейчас не правили
+        secret = data.get(section, {}).get(key, "")
+        if secret and set_secret(path, secret):
+            data[section][key] = ""
+    save(data)
+    return data
+
+
 def channels(enabled_only=True):
     """Список ссылок на каналы в порядке из файла, без дублей.
 

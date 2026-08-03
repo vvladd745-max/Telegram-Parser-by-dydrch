@@ -1,17 +1,33 @@
-"""Окно входа в Telegram: номер, код, пароль двухфакторной защиты.
+"""Окно входа в Telegram: ключи доступа, номер, код, пароль двухфакторной защиты.
 
 Окно ничего не делает само — оно только показывает страницы и передаёт
 введённое в рабочий поток (digest/tgclient.py), а обратно получает сигналы.
 Поэтому оно не замирает, пока Telegram думает.
+
+Почему api_id и api_hash появились здесь, хотя они есть в «Настройках».
+Без них вход невозможен в принципе, а человек, открывший «Вход в Telegram»,
+видел только поле для номера — и упирался в отказ, не понимая, куда идти.
+Теперь они стоят там же, где нужны, и ровно до тех пор, пока нужны: после
+входа страница показывает уже другое, и ключи с глаз убираются. В
+«Настройках» они остаются — там их правят, когда всё уже работает.
 """
 import ui
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QVBoxLayout, QHBoxLayout, QStackedWidget, QWidget,
-    QLabel, QLineEdit, QPushButton, QMessageBox,
+    QVBoxLayout, QHBoxLayout, QFormLayout, QStackedWidget, QWidget,
+    QCheckBox, QLabel, QLineEdit, QPushButton, QMessageBox,
 )
 
+from core import settings
+from core.logs import logger
+
 PAGE_PHONE, PAGE_CODE, PAGE_PASSWORD, PAGE_DONE = range(4)
+
+ACCESS_TEXT = (
+    "Это ключи вашего личного приложения Telegram: по ним программа читает "
+    "каналы от вашего имени. Выдаются бесплатно и один раз — на my.telegram.org, "
+    "в разделе API development tools. Название приложения в форме любое."
+)
 
 
 def _page(title, hint, *widgets):
@@ -40,6 +56,35 @@ class LoginWizard(QWidget):
         self.worker = worker
         self.setWindowTitle("Вход в Telegram")
         self.setMinimumWidth(460)
+
+        # --- ключи доступа: нужны до всего остального ---
+        self.api_id = QLineEdit()
+        self.api_id.setPlaceholderText("число с my.telegram.org")
+        self.api_hash = QLineEdit()
+        self.api_hash.setEchoMode(QLineEdit.Password)
+        self.api_hash.setPlaceholderText("длинная строка оттуда же")
+        self.show_keys = QCheckBox("Показать api_hash")
+        self.show_keys.toggled.connect(
+            lambda on: self.api_hash.setEchoMode(
+                QLineEdit.Normal if on else QLineEdit.Password))
+        # Записываем молча, как только человек ушёл из поля: отдельной кнопки
+        # «Сохранить» здесь нет, и вставленный ключ не должен пропасть, если
+        # человек отвлёкся и ушёл со страницы.
+        for field in (self.api_id, self.api_hash):
+            field.editingFinished.connect(self._save_access_quietly)
+
+        access = QFormLayout()
+        access.setHorizontalSpacing(16)
+        access.addRow("api_id:", self.api_id)
+        access.addRow("api_hash:", self.api_hash)
+        access.addRow("", self.show_keys)
+        access.addRow("", ui.link(
+            self, "Получить api_id и api_hash на my.telegram.org",
+            "https://my.telegram.org",
+            "Откроется сайт Telegram. Войдите по номеру телефона, раздел "
+            "API development tools."))
+        access.addRow(ui.label(ACCESS_TEXT, tone="muted", widget=self, wrap=True))
+        self.access_card = ui.card(self, "Ключи доступа", access)
 
         # --- страница номера ---
         self.phone_input = QLineEdit()
@@ -79,8 +124,10 @@ class LoginWizard(QWidget):
         self.pages = QStackedWidget()
         self.pages.addWidget(_page(
             "Вход в Telegram",
-            "Введите номер телефона того аккаунта, который читает каналы. "
-            "Telegram пришлёт код в приложение.",
+            "Сначала ключи доступа, потом номер телефона того аккаунта, "
+            "который будет читать каналы. Telegram пришлёт код в приложение.",
+            self.access_card,
+            ui.label("Номер телефона", tone="muted", widget=self),
             self.phone_input, self.phone_button))
         self.pages.addWidget(_page(
             "Код подтверждения",
@@ -109,7 +156,10 @@ class LoginWizard(QWidget):
 
         self.pages.addWidget(_page(
             "Вход выполнен",
-            "Дальше нужен канал, куда приложение будет присылать отобранные посты.",
+            "Дальше нужен канал, куда приложение будет присылать отобранные посты.\n\n"
+            "Ключи доступа больше не спрашиваем — они своё дело сделали. "
+            "Если когда-нибудь понадобится их поменять, они лежат в разделе "
+            "«Настройки».",
             self.who, done_buttons))
 
         self.status = QLabel()
@@ -141,7 +191,14 @@ class LoginWizard(QWidget):
         for signal, slot in self._links:
             signal.connect(slot)
 
+        self.load_access()
         self.go(PAGE_PHONE)
+        self.worker.check()
+
+    def page_show(self):
+        """Раздел открыли заново. Ключи могли поправить в «Настройках», а вход —
+        завершиться в другом месте, поэтому перечитываем и то, и другое."""
+        self.load_access()
         self.worker.check()
 
     def closeEvent(self, event):
@@ -169,14 +226,83 @@ class LoginWizard(QWidget):
         for b in (self.phone_button, self.code_button, self.password_button,
                   self.channel_button, self.logout_button):
             b.setEnabled(not busy)
+        for field in (self.api_id, self.api_hash):
+            field.setEnabled(not busy)
 
     def show_status(self, text):
         self.status.setStyleSheet("")
         self.status.setText(text)
 
+    # ---------- ключи доступа ----------
+
+    def load_access(self):
+        """Показать в полях то, что уже сохранено. Сломанные настройки
+        не должны рушить страницу: тогда поля просто останутся пустыми."""
+        try:
+            raw = settings.get("telegram.api_id")
+            api_id = int(raw or 0)
+        except (TypeError, ValueError, settings.SettingsError):
+            api_id = 0
+        try:
+            api_hash = settings.get_secret("telegram.api_hash")
+        except settings.SettingsError:
+            api_hash = ""
+        self.api_id.setText(str(api_id) if api_id > 0 else "")
+        self.api_hash.setText(api_hash)
+
+    def _save_access(self, complain=True):
+        """Записать ключи доступа. True — можно идти дальше.
+
+        complain=False — тихий режим: так зовётся при уходе из поля, и ругаться
+        на недозаполненное там нельзя, человек ещё печатает.
+        """
+        api_id_text = self.api_id.text().strip()
+        api_hash = self.api_hash.text().strip()
+
+        if not api_id_text or not api_hash:
+            if complain:
+                self.on_failed(
+                    "Заполните api_id и api_hash — без них Telegram не пустит "
+                    "программу читать каналы. Где их взять, написано выше.")
+            return False
+        if not api_id_text.isdigit():
+            if complain:
+                self.on_failed("api_id — это число, букв и знаков в нём не бывает. "
+                               "Длинная строка из букв и цифр — это api_hash.")
+            return False
+
+        api_id = int(api_id_text)
+        try:
+            was_id = int(settings.get("telegram.api_id") or 0)
+            was_hash = settings.get_secret("telegram.api_hash")
+        except (TypeError, ValueError, settings.SettingsError):
+            was_id, was_hash = 0, ""
+        if (was_id, was_hash) == (api_id, api_hash):
+            return True                      # ничего не изменилось, писать нечего
+
+        try:
+            settings.save_partial(
+                {"telegram": {"api_id": api_id, "api_hash": api_hash}})
+        except (settings.SettingsError, OSError) as e:
+            if complain:
+                self.on_failed(f"Не удалось сохранить ключи доступа: {e}")
+            return False
+
+        logger.info("Ключи доступа к Telegram сохранены со страницы входа.")
+        # Клиент Telethon создан на прежних ключах и про новые не знает.
+        # Отпускаем сессию: следующее обращение поднимет его заново.
+        self.worker.release_session()
+        return True
+
+    def _save_access_quietly(self):
+        self._save_access(complain=False)
+
     # ---------- что делает человек ----------
 
     def send_phone(self):
+        # ключи нужны раньше номера: без них Telegram даже не ответит
+        if not self._save_access():
+            return
         self._busy(True)
         self.show_status("Связываюсь с Telegram...")
         self.worker.login(self.phone_input.text())
