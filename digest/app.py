@@ -15,7 +15,7 @@ import sys, os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import portalocker
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QFontMetrics
 from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
@@ -29,11 +29,16 @@ from settings_window import SettingsWindow
 from channels_window import ChannelsWindow
 from interests_window import InterestsWindow
 from about import AboutPage
+from schedule_window import ScheduleWindow
 from runner import DigestRun
 from console import RunConsole
 import ui
 
 APP_TITLE = "Парсер Telegram-каналов"
+
+# Ключ командной строки, которым программу запускает Планировщик Windows.
+# Окно открывается и сразу начинает настоящую проверку, без вопросов.
+RUN_NOW_FLAG = "--run-now"
 
 # как объяснить человеку выбор папки с данными (paths.mode())
 MODE_TEXT = {
@@ -46,12 +51,14 @@ MODE_TEXT = {
 # а на самой странице стоит полный заголовок.
 NAV_RUN = "Проверка каналов"
 
-PAGE_RUN, PAGE_SETTINGS, PAGE_CHANNELS, PAGE_INTERESTS, PAGE_LOGIN, PAGE_ABOUT = range(6)
+(PAGE_RUN, PAGE_SETTINGS, PAGE_CHANNELS, PAGE_INTERESTS, PAGE_SCHEDULE,
+ PAGE_LOGIN, PAGE_ABOUT) = range(7)
 PAGE_TITLES = {
     PAGE_RUN: "Проверка Telegram-каналов",
     PAGE_SETTINGS: "Настройки",
     PAGE_CHANNELS: "Каналы",
     PAGE_INTERESTS: "Интересы",
+    PAGE_SCHEDULE: "Расписание",
     PAGE_LOGIN: "Вход в Telegram",
     PAGE_ABOUT: "О программе",
 }
@@ -61,7 +68,7 @@ CONSOLE_HINT = ("Здесь будет видно, что происходит �
 
 
 class MainWindow(QWidget):
-    def __init__(self):
+    def __init__(self, run_now=False):
         super().__init__()
         self.setWindowTitle(APP_TITLE)
         icon = ui.app_icon()
@@ -92,6 +99,12 @@ class MainWindow(QWidget):
         self.go_to(PAGE_RUN, force=True)
         self.refresh()
         self._look_at_start = self._look()
+
+        # Запуск по расписанию. Через таймер, а не сразу: окно должно сперва
+        # появиться на экране и прорисоваться, иначе человек полминуты видит
+        # серый прямоугольник и решает, что программа повисла.
+        if run_now:
+            QTimer.singleShot(400, self._start_scheduled_run)
 
     @staticmethod
     def _look():
@@ -132,6 +145,7 @@ class MainWindow(QWidget):
         self.settings_button = ui.nav_button(self, "Настройки")
         self.channels_button = ui.nav_button(self, "Каналы")
         self.interests_button = ui.nav_button(self, "Интересы")
+        self.schedule_button = ui.nav_button(self, "Расписание")
         self.login_button = ui.nav_button(self, "Вход в Telegram")
         self.about_button = ui.nav_button(self, "О программе")
         self.nav_buttons = {
@@ -139,6 +153,7 @@ class MainWindow(QWidget):
             PAGE_SETTINGS: self.settings_button,
             PAGE_CHANNELS: self.channels_button,
             PAGE_INTERESTS: self.interests_button,
+            PAGE_SCHEDULE: self.schedule_button,
             PAGE_LOGIN: self.login_button,
             PAGE_ABOUT: self.about_button,
         }
@@ -161,12 +176,14 @@ class MainWindow(QWidget):
         self.settings_page = SettingsWindow()
         self.channels_page = ChannelsWindow(self.telegram)
         self.interests_page = InterestsWindow()
+        self.schedule_page = ScheduleWindow()
         self.login_page = LoginWizard(self.telegram)
         self.about_page = AboutPage()
         self.page_widgets = {
             PAGE_SETTINGS: self.settings_page,
             PAGE_CHANNELS: self.channels_page,
             PAGE_INTERESTS: self.interests_page,
+            PAGE_SCHEDULE: self.schedule_page,
             PAGE_LOGIN: self.login_page,
             PAGE_ABOUT: self.about_page,
         }
@@ -178,6 +195,11 @@ class MainWindow(QWidget):
         for page in (self.settings_page, self.channels_page, self.interests_page):
             page.saved.connect(self.on_page_saved)
             page.cancelled.connect(self.back_to_run)
+        # Расписание не уводит со страницы после сохранения: там остаётся строка
+        # о том, когда теперь запустится проверка, и её надо дать прочитать.
+        # Клиента Telegram оно не трогает, переподключаться незачем.
+        self.schedule_page.saved.connect(self.refresh)
+        self.schedule_page.cancelled.connect(self.back_to_run)
         self.login_page.finished_login.connect(self.back_to_run)
         return self.pages
 
@@ -254,7 +276,10 @@ class MainWindow(QWidget):
             "Проверка дочитает текущий пост и остановится. Отобранное уже отправлено, "
             "остальное дочитается в следующий раз.")
         self.run_button = ui.primary_button(self, "Запустить проверку")
-        self.run_button.clicked.connect(self.start_run)
+        # через lambda, а не напрямую: clicked передаёт в обработчик False,
+        # и он молча встал бы на место confirm — настоящая проверка пошла бы
+        # по кнопке без вопроса
+        self.run_button.clicked.connect(lambda: self.start_run())
         head.addWidget(self.dry_run_box)
         head.addWidget(self.cancel_button)
         head.addWidget(self.run_button)
@@ -329,7 +354,18 @@ class MainWindow(QWidget):
 
     # ---------- прогон ----------
 
-    def start_run(self):
+    def _start_scheduled_run(self):
+        """Проверка, запущенная Планировщиком Windows.
+
+        Всегда настоящая и всегда без вопроса «запускать?»: спрашивать некого,
+        человек мог отойти от компьютера, и модальное окно провисело бы до вечера,
+        так и не начав проверку.
+        """
+        logs.logger.info("Запуск по расписанию: начинаю настоящую проверку.")
+        self.dry_run_box.setChecked(False)
+        self.start_run(confirm=False)
+
+    def start_run(self, confirm=True):
         if self.run is not None and self.run.isRunning():
             return
         # Проверять нечем — говорим об этом словами. Иначе Telethon вывалит
@@ -344,7 +380,7 @@ class MainWindow(QWidget):
                 ". Загляните в «Настройки».")
             return
         dry_run = self.dry_run_box.isChecked()
-        if not dry_run:
+        if not dry_run and confirm:
             answer = QMessageBox.question(
                 self, "Настоящая проверка",
                 "Программа прочитает каналы и перешлёт отобранное. Закладки по каналам "
@@ -434,7 +470,8 @@ class MainWindow(QWidget):
         self.cancel_button.setEnabled(busy)
         self.dry_run_box.setEnabled(not busy)
         for button in (self.settings_button, self.channels_button,
-                       self.interests_button, self.login_button, self.reload_button):
+                       self.interests_button, self.schedule_button,
+                       self.login_button, self.reload_button):
             button.setEnabled(not busy)
         if busy:
             self.go_to(PAGE_RUN, force=True)
@@ -527,13 +564,15 @@ def take_app_lock():
     return handle
 
 
-def main():
+def main(argv=None):
+    run_now = RUN_NOW_FLAG in list(sys.argv[1:] if argv is None else argv)
     logs.setup("app")
     # Первое, что пишем в журнал: где мы и что нам доступно. В сборке без
     # консоли это единственный способ понять, почему у человека не работает.
     logs.logger.info(
         f"Запуск: сборка={paths.frozen()}, режим={paths.mode()}, "
-        f"папка данных={paths.home()}, хранилище секретов={secrets.available()}")
+        f"папка данных={paths.home()}, хранилище секретов={secrets.available()}"
+        + (", по расписанию" if run_now else ""))
     # первый запуск на чистой машине: раскладываем заготовки настроек,
     # чтобы окно показывало «заполните api_id», а не «файла нет»
     for created in settings.bootstrap():
@@ -548,6 +587,13 @@ def main():
     lock = take_app_lock()
     if lock is None:
         logs.logger.warning("[!] Программа уже запущена — второе окно не открываю.")
+        if run_now:
+            # Пришли по расписанию, а окно уже открыто. Показывать сообщение
+            # некому: человек мог отойти, и оно провисело бы до вечера, держа
+            # процесс. Просто уходим — в журнале видно, почему проверки не было.
+            logs.logger.warning(
+                "[!] Проверка по расписанию пропущена: программа уже открыта.")
+            return 0
         QMessageBox.information(
             None, APP_TITLE,
             "Программа уже запущена.\n\n"
@@ -559,12 +605,14 @@ def main():
     while True:
         ui.apply_theme(app, settings.get("ui.theme", "system"))
         ui.apply_base_font(app, settings.get("ui.font_size", 0))
-        window = MainWindow()
+        window = MainWindow(run_now=run_now)
         window.show()
         code = app.exec()
         if not window.restart_requested:
             return code
         settings.load(force=True)
+        # окно пересобирают из-за смены темы; проверку второй раз не начинаем
+        run_now = False
 
 
 if __name__ == "__main__":
