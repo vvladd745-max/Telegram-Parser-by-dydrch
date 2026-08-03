@@ -72,6 +72,12 @@ def default_client_factory():
     return TelegramClient(session, api_id, api_hash)
 
 
+def _title(entity):
+    """Название канала. У приватного канала без названия его может не быть —
+    тогда пустая строка, и окно просто оставит клетку пустой."""
+    return str(getattr(entity, "title", "") or "").strip()
+
+
 def human_error(e):
     """Ошибка Telegram человеческими словами. Подробности уходят в журнал."""
     logger.warning(f"   [!] Telegram: {type(e).__name__}: {e}")
@@ -126,7 +132,9 @@ class TelegramWorker(QThread):
     channel_created = Signal(str)     # создан канал доставки, его название
     # проверка ссылки: (ссылка, итог, пояснение). Итог: ok | renamed | fail.
     # При renamed пояснение — новая ссылка, при fail — причина.
-    channel_checked = Signal(str, str, str)
+    # ссылка, вердикт, подробность, название канала. Название приходит
+    # четвёртым, а не вместо подробности: у «сменил ссылку» нужны оба.
+    channel_checked = Signal(str, str, str, str)
 
     def __init__(self, client_factory=None, parent=None):
         super().__init__(parent)
@@ -313,8 +321,8 @@ class TelegramWorker(QThread):
         # «except ... as» Python удаляет сразу по выходу из блока
         first_error = None
         try:
-            await client.get_entity(link)
-            self.channel_checked.emit(link, "ok", "")
+            entity = await client.get_entity(link)
+            self.channel_checked.emit(link, "ok", "", _title(entity))
             return
         except Exception as e:
             first_error = e
@@ -323,19 +331,22 @@ class TelegramWorker(QThread):
         if not cid:
             # для только что добавленного канала id ещё не запомнен —
             # страховать нечем, и это нормально
-            self.channel_checked.emit(link, "fail", str(first_error))
+            self.channel_checked.emit(link, "fail", str(first_error), "")
             return
         try:
             entity = await client.get_entity(PeerChannel(cid))
         except Exception as second_error:
             self.channel_checked.emit(
-                link, "fail", f"{first_error}; по запомненному id тоже не открылся ({second_error})")
+                link, "fail",
+                f"{first_error}; по запомненному id тоже не открылся ({second_error})", "")
             return
         username = getattr(entity, "username", None)
         if username:
-            self.channel_checked.emit(link, "renamed", "https://t.me/" + str(username))
+            self.channel_checked.emit(link, "renamed", "https://t.me/" + str(username),
+                                      _title(entity))
         else:
-            self.channel_checked.emit(link, "fail", f"{first_error}; канал стал приватным")
+            self.channel_checked.emit(link, "fail", f"{first_error}; канал стал приватным",
+                                      _title(entity))
 
     async def _create_channel(self, title):
         """Создаёт приватный канал и записывает его в настройки как адрес доставки.

@@ -8,6 +8,7 @@
     ссылку и ждёт, пока человек нажмёт «Обновить ссылку».
 """
 import json
+import os
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
@@ -19,18 +20,97 @@ import ui
 from core import channels as links, paths, settings
 from core.logs import logger
 
-COL_ON, COL_LINK, COL_NICK, COL_STATE = range(4)
+COL_ON, COL_LINK, COL_NICK, COL_TITLE, COL_STATE = range(5)
 IDS_KEY = "__ids__"
 SENT_KEY = "__sent__"
 
+# Длинное название режем: в строку таблицы оно всё равно не влезет, а узнать
+# канал человеку хватает и начала. Полное остаётся в подсказке при наведении.
+TITLE_LIMIT = 40
+
 
 def read_state():
-    """Состояние прогона, только на чтение: пишет в него digest.py, не окно."""
+    """Состояние прогона. Окно читает его целиком, а пишет ровно одно поле —
+    название канала, см. save_titles."""
     try:
         with open(paths.state_file(), "r", encoding="utf-8") as f:
             return json.load(f)
     except (OSError, ValueError):
         return {}
+
+
+def save_titles(found):
+    """Запомнить названия каналов: {ссылка: название}. Вернуть, сколько записали.
+
+    Единственное место, где окно пишет в state.json, и трогает оно там только
+    поле title внутри памяти по каналам. Закладки и реестр отправленного не
+    задеваются: файл читается целиком и целиком же перезаписывается заново.
+
+    Почему это безопасно: разделы окна выключены, пока идёт проверка, а второй
+    экземпляр программы не запускается вовсе — значит писать в файл в этот
+    момент больше некому.
+
+    Почему вообще нужно: названия узнаёт прогон, но человек может открыть
+    «Каналы» до первой настоящей проверки. Без записи название, найденное
+    кнопкой «Проверить все», пропадало бы при следующем открытии страницы.
+    """
+    if not found:
+        return 0
+    state = read_state()
+    if not state:
+        return 0                      # состояния ещё нет — записывать некуда
+    ids = state.setdefault(IDS_KEY, {})
+    changed = 0
+    for link, title in found.items():
+        title = str(title or "").strip()
+        if not title:
+            continue
+        nick = links.link_nick(link)
+        memo = ids.get(nick)
+        if not isinstance(memo, dict):
+            # канал только что добавлен, id ещё не запомнен: заводим запись
+            # с одним названием. Прогон потом допишет в неё id и ключ.
+            memo = {}
+            ids[nick] = memo
+        if memo.get("title") == title:
+            continue
+        memo["title"] = title
+        changed += 1
+    if not changed:
+        return 0
+    path = paths.state_file()
+    tmp = path + ".tmp"
+    try:
+        paths.ensure_dirs()
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(state, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, path)
+    except OSError as e:
+        logger.warning(f"   [!] Не удалось запомнить названия каналов: {e}")
+        return 0
+    return changed
+
+
+def remembered_title(state, link):
+    """Название канала, запомненное прошлыми проверками. Пусто — ещё не знаем.
+
+    Запоминает его прогон, в той же записи, что и id канала (см. digest.py,
+    _remember_chan). Поэтому у только что добавленного канала названия нет
+    до первой настоящей проверки — или до нажатия «Проверить все».
+    """
+    ids = state.get(IDS_KEY) or {}
+    memo = ids.get(links.link_nick(link))
+    if not isinstance(memo, dict):
+        return ""
+    return str(memo.get("title") or "").strip()
+
+
+def short_title(title):
+    """Название для клетки таблицы: длинное обрезаем многоточием."""
+    title = str(title or "").strip()
+    if len(title) <= TITLE_LIMIT:
+        return title
+    return title[:TITLE_LIMIT - 1].rstrip() + "…"
 
 
 def memory_note(state, link):
@@ -57,11 +137,12 @@ class ChannelsWindow(QWidget):
         self.setWindowTitle("Каналы")
         self.resize(760, 560)
         self._new_links = {}      # ссылка -> новая ссылка, найденная проверкой
+        self._found_titles = {}   # ссылка -> название, узнанное проверкой
         self._pending = 0         # сколько проверок ещё в работе
 
-        self.table = QTableWidget(0, 4)
+        self.table = QTableWidget(0, 5)
         self.table.setHorizontalHeaderLabels(
-            ["Чтение", "Ссылка на канал", "Ник канала", "Состояние"])
+            ["Чтение", "Ссылка на канал", "Ник канала", "Название", "Состояние"])
         self.table.verticalHeader().setVisible(False)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
@@ -69,6 +150,9 @@ class ChannelsWindow(QWidget):
         header.setSectionResizeMode(COL_ON, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(COL_LINK, QHeaderView.Stretch)
         header.setSectionResizeMode(COL_NICK, QHeaderView.ResizeToContents)
+        # название тянется вместе со ссылкой: на широком экране пустого места
+        # было столько, что читать таблицу приходилось через весь монитор
+        header.setSectionResizeMode(COL_TITLE, QHeaderView.Stretch)
         header.setSectionResizeMode(COL_STATE, QHeaderView.ResizeToContents)
         ui.style_table(self, self.table)
 
@@ -160,11 +244,12 @@ class ChannelsWindow(QWidget):
             else:
                 link, enabled = str(item), True
             if link.strip():
-                self.add_row(link.strip(), enabled, memory_note(state, link))
+                self.add_row(link.strip(), enabled, memory_note(state, link),
+                             remembered_title(state, link))
         self._saved_snapshot = self.snapshot()
         self.show_message(f"Каналов в списке: {self.table.rowCount()}.")
 
-    def add_row(self, link, enabled=True, state_text=""):
+    def add_row(self, link, enabled=True, state_text="", title=""):
         row = self.table.rowCount()
         self.table.insertRow(row)
 
@@ -184,7 +269,20 @@ class ChannelsWindow(QWidget):
 
         self.table.setItem(row, COL_LINK, QTableWidgetItem(link))
         self.table.setItem(row, COL_NICK, QTableWidgetItem(links.link_nick(link)))
+        self.set_title(row, title)
         self.table.setItem(row, COL_STATE, QTableWidgetItem(state_text))
+
+    def set_title(self, row, title):
+        """Название в клетку: обрезанное, а полное — подсказкой при наведении."""
+        title = str(title or "").strip()
+        cell = QTableWidgetItem(short_title(title))
+        if title:
+            cell.setToolTip(title)
+        self.table.setItem(row, COL_TITLE, cell)
+
+    def row_title(self, row):
+        cell = self.table.item(row, COL_TITLE)
+        return cell.toolTip() or cell.text() if cell else ""
 
     def row_link(self, row):
         item = self.table.item(row, COL_LINK)
@@ -249,6 +347,7 @@ class ChannelsWindow(QWidget):
             return
         self.check_button.setEnabled(False)
         self._new_links.clear()
+        self._found_titles.clear()
         self.fix_button.setEnabled(False)
         self._pending = self.table.rowCount()
         self.show_message(f"Проверяю {self._pending} каналов, это займёт время...")
@@ -312,10 +411,14 @@ class ChannelsWindow(QWidget):
 
     # ---------- ответы проверки ----------
 
-    def on_checked(self, link, verdict, detail):
+    def on_checked(self, link, verdict, detail, title=""):
         row = self.find_row(link)
         self._pending = max(0, self._pending - 1)
+        if title:
+            self._found_titles[link] = title
         if row >= 0:
+            if title:
+                self.set_title(row, title)
             if verdict == "ok":
                 self.set_state(row, "открывается")
             elif verdict == "renamed":
@@ -338,6 +441,13 @@ class ChannelsWindow(QWidget):
         self.show_message(text, error=True)
 
     def summarize(self):
+        # названия запоминаем разом, когда все проверки закончились:
+        # писать в файл после каждого из полусотни каналов незачем
+        saved = save_titles(self._found_titles)
+        if saved:
+            logger.info(f"Запомнены названия каналов: {saved}")
+        self._found_titles.clear()
+
         bad = sum(1 for r in range(self.table.rowCount())
                   if (self.table.item(r, COL_STATE) or QTableWidgetItem()).text() == "не открылся")
         if self._new_links:

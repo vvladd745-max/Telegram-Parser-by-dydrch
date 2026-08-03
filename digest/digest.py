@@ -118,7 +118,12 @@ def _chan_memo(state, ch):
 def _remember_chan(state, ch, entity, key):
     """Запоминаем id канала и ключ состояния под ником, а не под полной
     ссылкой. Заодно выкидываем старую запись-URL из волны 4, чтобы
-    в state.json не копились два формата разом."""
+    в state.json не копились два формата разом.
+
+    Название канала здесь же: ник и ссылку человек не помнит, а в окне
+    «Каналы» ему нужно узнавать строки в лицо. Читать название неоткуда
+    больше — канал открыт только здесь и в проверке ссылок.
+    """
     cid = getattr(entity, "id", None)
     if cid is None:
         return
@@ -126,7 +131,11 @@ def _remember_chan(state, ch, entity, key):
     nick = link_nick(ch)
     if str(ch) != nick:
         ids.pop(str(ch), None)
-    ids[nick] = {"id": cid, "key": key}
+    memo = {"id": cid, "key": key}
+    title = str(getattr(entity, "title", "") or "").strip()
+    if title:
+        memo["title"] = title
+    ids[nick] = memo
 
 async def _open_channel(client, ch, state):
     """Открываем канал: сначала по ссылке из CHANNELS, потом — по запомненному id.
