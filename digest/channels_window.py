@@ -420,7 +420,10 @@ class ChannelsWindow(QWidget):
             if title:
                 self.set_title(row, title)
             if verdict == "ok":
-                self.set_state(row, "открывается")
+                # прошедшее время, а не «открывается»: это результат проверки,
+                # а не её ход. В настоящем времени вся таблица читалась так,
+                # будто она до сих пор чем-то занята и висит
+                self.set_state(row, "открылся")
             elif verdict == "renamed":
                 self._new_links[link] = detail
                 self.set_state(row, f"сменил ссылку → {detail}")
@@ -458,7 +461,7 @@ class ChannelsWindow(QWidget):
             self.show_message(f"Не открылись: {bad}. Наведите курсор на «не открылся», "
                               "чтобы увидеть причину.", error=True)
         else:
-            self.show_message("Проверка закончена, все каналы открываются.")
+            self.show_message("Проверка закончена: все каналы открылись.")
 
     def show_message(self, text, error=False):
         self.message.setStyleSheet(f"color: {self.error_color()};" if error else "")
