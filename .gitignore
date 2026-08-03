@@ -48,3 +48,4 @@ daily_guard.py
 diag.py
 run_all.bat
 digest/run.bat
+digest/app.lock
