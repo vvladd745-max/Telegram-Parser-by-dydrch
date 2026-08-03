@@ -14,7 +14,7 @@ import threading
 
 from PySide6.QtCore import QThread, Signal
 
-from core import logs, settings
+from core import logs, lmstudio, settings
 from core.logs import logger
 
 
@@ -50,6 +50,7 @@ class DigestRun(QThread):
                                    filter=lambda record: record["exception"] is None)
         lock_taken = False
         digest = None
+        lms_done = None      # что мы подняли в LM Studio: это же и уберём
         try:
             try:
                 # импорт здесь, а не наверху: digest.py при плохих настройках
@@ -74,6 +75,18 @@ class DigestRun(QThread):
                     return
                 lock_taken = True
 
+            # Модель поднимаем и для тестовой проверки тоже: она точно так же
+            # спрашивает у модели про каждый пост.
+            try:
+                lms_done = lmstudio.prepare()
+            except lmstudio.LMStudioError as e:
+                self.failed.emit(str(e))
+                return
+            if self._cancel.is_set():
+                # успели нажать «Остановить», пока грузилась модель
+                self.done.emit("", True)
+                return
+
             summary = asyncio.run(digest.main(
                 dry_run=self.dry_run, hours=self.hours,
                 progress=self._on_progress, cancel=self._cancel))
@@ -89,6 +102,10 @@ class DigestRun(QThread):
             self.failed.emit(f"Проверка прервалась: {e}")
             return
         finally:
+            # Память освобождаем в любом случае, даже если проверка упала:
+            # иначе модель на несколько гигабайт останется висеть до
+            # перезагрузки компьютера. Убираем только то, что подняли сами.
+            lmstudio.release(lms_done)
             if lock_taken and digest is not None:
                 digest.release_lock()
 
