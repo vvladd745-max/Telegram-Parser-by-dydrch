@@ -5,9 +5,10 @@
 ; Два решения, которые здесь важнее прочих:
 ;   1. Ставим без прав администратора, в папку пользователя. Коллеге на рабочем
 ;      ноутбуке админ может быть недоступен, а программе он и не нужен.
-;   2. При удалении НЕ трогаем данные человека в %LOCALAPPDATA%\TelegramDigest:
-;      там настройки, вход в Telegram и закладки по каналам. Переустановка
-;      не должна стирать месяцы накопленного состояния.
+;   2. При удалении данные человека в %LOCALAPPDATA%\TelegramDigest — настройки,
+;      вход в Telegram и закладки по каналам — сами по себе не стираются:
+;      программа спрашивает об этом отдельно, и по умолчанию отвечает «нет».
+;      Переустановка не должна стирать месяцы накопленного состояния.
 
 #define AppName "Парсер Telegram-каналов"
 #define AppVersion "1.0"
@@ -25,6 +26,10 @@ VersionInfoVersion={#AppVersion}
 DefaultDirName={autopf}\{#AppName}
 DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
+; Страница выбора папки показывается ВСЕГДА. По умолчанию Inno Setup прячет её
+; при повторной установке поверх старой — из-за этого человек, уже поставивший
+; программу однажды, больше не видел выбора диска и папки.
+DisableDirPage=no
 ; ставим в профиль пользователя — прав администратора не потребуется
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
@@ -56,10 +61,76 @@ Source: "{#BuildDir}\*"; DestDir: "{app}"; \
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExe}"
 Name: "{group}\Удалить {#AppName}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopicon
+; Ярлык удаления в самой папке программы. Inno Setup и так кладёт туда
+; unins000.exe, но по такому имени человек ничего не найдёт.
+Name: "{app}\Удалить {#AppName}"; Filename: "{uninstallexe}"; \
+    IconFilename: "{uninstallexe}"
 
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "Запустить {#AppName}"; \
     Flags: nowait postinstall skipifsilent
 
 ; Раздела [UninstallDelete] здесь намеренно нет: данные пользователя лежат
-; в %LOCALAPPDATA%\TelegramDigest и при удалении программы остаются на месте.
+; в %LOCALAPPDATA%\TelegramDigest, и сами по себе они не удаляются. Их судьбу
+; решает человек в вопросе, который задаёт код ниже.
+
+[Code]
+const
+  { Имя папки данных и имя хранилища секретов. Должны совпадать с APP_NAME
+    в core\paths.py и SERVICE_DEFAULT в core\secrets.py: установщик знает
+    эти имена сам, спросить их у программы ему негде.
+    Написаны здесь, а не через #define, чтобы не зависеть от препроцессора:
+    ошибку подстановки внутри кода не видно до самого удаления. }
+  DataDirName = 'TelegramDigest';
+  KeyringService = 'TelegramDigest';
+
+{ Записи в Диспетчере учётных данных Windows. Библиотека keyring кладёт
+  первый секрет под именем службы, а каждый следующий — под «секрет@служба».
+  Поэтому убирать надо оба вида имён. Имена самих секретов взяты из
+  SECRET_PATHS в core\settings.py.
+
+  Похожие записи с хвостом (TelegramDigest-ПРОБА и подобные) остаются от
+  проверочных запусков автора и здесь не трогаются: совпадение имени
+  должно быть точным. }
+procedure ForgetCredentials();
+var
+  Targets: array[0..3] of String;
+  I, Code: Integer;
+begin
+  Targets[0] := KeyringService;
+  Targets[1] := 'telegram.api_hash@' + KeyringService;
+  Targets[2] := 'bot.token@' + KeyringService;
+  Targets[3] := 'model.api_key@' + KeyringService;
+  for I := 0 to 3 do
+    { Отсутствующая запись — не ошибка, код возврата не проверяем. }
+    Exec(ExpandConstant('{sys}\cmdkey.exe'), '/delete:' + Targets[I],
+         '', SW_HIDE, ewWaitUntilTerminated, Code);
+end;
+
+{ Вопрос задаётся ПОСЛЕ того, как файлы программы уже удалены: если человек
+  передумает и закроет окно, программа всё равно будет снята, а данные целы.
+  При тихом удалении (/SILENT) вопроса нет и данные остаются. }
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  DataDir: String;
+begin
+  if CurUninstallStep <> usPostUninstall then
+    Exit;
+  if UninstallSilent then
+    Exit;
+
+  DataDir := ExpandConstant('{localappdata}') + '\' + DataDirName;
+  if not DirExists(DataDir) then
+    Exit;
+
+  if MsgBox('Удалить также ваши настройки, вход в Telegram и закладки по каналам?'
+            + #13#10#13#10
+            + 'Они лежат в папке:' + #13#10 + DataDir + #13#10#13#10
+            + 'Если собираетесь поставить программу заново — нажмите «Нет».'
+            + ' Тогда всё сохранится и настраивать заново не придётся.',
+            mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES then
+  begin
+    DelTree(DataDir, True, True, True);
+    ForgetCredentials();
+  end;
+end;
