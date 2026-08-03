@@ -69,6 +69,22 @@ DEFAULTS = {
 }
 
 
+# Куда посылать человека за исправлением. Названия — ровно те, что он видит
+# в окне. Раньше здесь стояло «раздел telegram, поле target»: это имена строк
+# в файле настроек, которого он не открывает никогда, и подсказка получалась
+# ни о чём. Меняются эти строки вместе с подписями в окне настроек.
+WHERE_TELEGRAM = "«Настройки» → «Доступ к Telegram»"
+WHERE_DEPTH = "«Настройки» → «Длительность проверки»"
+WHERE_MODEL = "«Настройки» → «ИИ-модель для анализа постов»"
+WHERE_BOT = "«Настройки» → «Отчёты»"
+
+# Поля, которых в окне нет вовсе: они появляются в файле, только если его
+# правили руками. Посылать за ними в окно бессмысленно.
+WHERE_HAND = ("Такого поля в окне нет — значит, файл настроек правили вручную. "
+              "Впишите положительное число или удалите строку целиком: "
+              "тогда вернётся значение по умолчанию.")
+
+
 class SettingsError(Exception):
     """Настройки не прочитать: файла нет, он испорчен или это не объект JSON.
 
@@ -327,16 +343,20 @@ def blockers():
         api_id = int(get("telegram.api_id") or 0)
     except (TypeError, ValueError):
         api_id = 0
+    # Каждая строка сама говорит, куда идти: разделы разные, и общее
+    # «загляните в Настройки» отправляло бы не туда в половине случаев.
     if api_id <= 0 or not get_secret("telegram.api_hash").strip():
-        out.append("не заполнены api_id и api_hash — их выдают на my.telegram.org")
+        out.append("не заполнены api_id и api_hash — их выдают на my.telegram.org, "
+                   "а вписывают в разделе «Настройки»")
     if not str(get("telegram.target", "") or "").strip():
-        out.append("не указано, куда пересылать посты")
+        out.append("не указано, куда пересылать посты — это поле в разделе «Настройки»")
     if not channels():
-        out.append("список каналов пуст")
+        out.append("список каналов пуст — добавьте их в разделе «Каналы»")
     try:
         interests()
     except SettingsError:
-        out.append("нет текста интересов — по нему модель отбирает посты")
+        out.append("нет текста интересов, по нему модель отбирает посты — "
+                   "напишите его в разделе «Интересы»")
     return out
 
 
@@ -362,53 +382,82 @@ def problems():
     except (TypeError, ValueError):
         api_id = 0
     if api_id <= 0:
-        out.append("Не указан api_id из my.telegram.org (раздел telegram, поле api_id).")
+        out.append("Не заполнен api_id — без него Telegram не пустит программу читать "
+                   f"каналы. Поправить: {WHERE_TELEGRAM}. Там же ссылка, где его выдают.")
     if not get_secret("telegram.api_hash").strip():
-        out.append("Не указан api_hash из my.telegram.org (раздел telegram, поле api_hash).")
+        out.append("Не заполнен api_hash — он идёт в паре с api_id, и без него "
+                   f"Telegram тоже не пустит. Поправить: {WHERE_TELEGRAM}.")
     if not str(tg.get("session_name") or "").strip():
-        out.append("Не указано имя файла сессии Telegram (раздел telegram, поле session_name).")
+        out.append("Стёрто имя файла, в котором хранится вход в Telegram. "
+                   "Такого поля в окне нет — значит, файл настроек правили вручную. "
+                   "Впишите обратно tg_digest или удалите строку session_name целиком.")
     if not str(tg.get("target") or "").strip():
-        out.append("Не указано, куда пересылать посты (раздел telegram, поле target).")
+        out.append("Не указано, куда пересылать отобранные посты. "
+                   f"Поправить: {WHERE_TELEGRAM} → «Куда слать посты». Проще всего "
+                   "завести канал для доставки на странице «Вход в Telegram» — "
+                   "программа создаст его сама и подставит сюда.")
 
     links = channels()
     if not links:
-        out.append("Список каналов пуст — читать нечего (раздел channels).")
+        out.append("Список каналов пуст — читать нечего. "
+                   "Добавьте каналы в разделе «Каналы».")
     bad = [c for c in links if not _links.looks_like_channel(c)]
     if bad:
         out.append(
-            "Не похожи на адрес канала (" + str(len(bad)) + "): "
+            "Не похоже на адрес канала (" + str(len(bad)) + "): "
             + ", ".join(bad[:5]) + ("..." if len(bad) > 5 else "")
+            + ". Проверьте их в разделе «Каналы»: адрес выглядит как @имя_канала "
+              "или https://t.me/имя_канала."
         )
 
-    for field, human in (("lookback_hours", "окно первого запуска"),
-                         ("dry_run_hours", "окно тестового прогона"),
-                         ("per_channel_limit", "сколько сообщений читать на канал"),
-                         ("flood_wait_cap", "предел ожидания при FloodWait"),
-                         ("sent_keep", "сколько id отправленных постов помнить")):
+    # У каждого числа своё место в окне. Три последних поля в окне не показаны:
+    # они нужны редко, и человек их не трогает.
+    numbers = (
+        ("lookback_hours", "за сколько часов смотреть посты при первой проверке канала",
+         f"Поправить: {WHERE_DEPTH} → «Первая проверка канала»."),
+        ("dry_run_hours", "за сколько часов смотреть посты в тестовой проверке",
+         f"Поправить: {WHERE_DEPTH} → «Тестовая проверка»."),
+        ("per_channel_limit", "сколько сообщений читать в канале за один раз", WHERE_HAND),
+        ("flood_wait_cap", "сколько ждать, когда Telegram просит сделать паузу", WHERE_HAND),
+        ("sent_keep", "сколько отправленных постов помнить по каждому каналу", WHERE_HAND),
+    )
+    for field, human, fix in numbers:
         try:
             val = int(dg.get(field))
         except (TypeError, ValueError):
             val = 0
         if val <= 0:
-            out.append(f"Параметр digest.{field} ({human}) должен быть положительным числом.")
+            out.append(f"Значение «{human}» должно быть положительным числом. {fix}")
 
     if not str(md.get("url") or "").strip():
-        out.append("Не указан адрес локальной модели (раздел model, поле url).")
+        out.append("Не указан адрес модели — программе некуда обращаться за отбором "
+                   f"постов. Поправить: {WHERE_MODEL} → «Адрес». Для LM Studio на этом "
+                   "компьютере это http://localhost:1234/v1/chat/completions.")
     if not str(md.get("name") or "").strip():
-        out.append("Не указано имя модели (раздел model, поле name).")
+        out.append("Не указано имя модели — непонятно, какую из них спрашивать. "
+                   f"Поправить: {WHERE_MODEL} → «Имя модели».")
 
     if bot.get("enabled"):
         if not get_secret("bot.token").strip():
-            out.append("Отчёты ботом включены, но не указан токен бота (раздел bot, поле token).")
+            out.append("Включены отчёты ботом, но не указан токен бота — отправлять "
+                       f"их некому. Поправить: {WHERE_BOT} → «Токен бота»; там же ссылка "
+                       "на @BotFather, который его выдаёт. Или снимите галочку "
+                       "«Присылать отчёт о проверке ботом».")
         try:
             chat_id = int(bot.get("chat_id") or 0)
         except (TypeError, ValueError):
             chat_id = 0
         if chat_id == 0:
-            out.append("Отчёты ботом включены, но не указан chat_id получателя (раздел bot).")
+            out.append("Включены отчёты ботом, но не указано, кому их присылать. "
+                       f"Поправить: {WHERE_BOT} → chat_id; это ваш числовой адрес "
+                       "в Telegram, узнать его поможет ссылка в том же разделе. "
+                       "Или снимите галочку «Присылать отчёт о проверке ботом».")
 
     if not os.path.exists(paths.interests_file()):
-        out.append(f"Не найден файл с описанием интересов: {paths.interests_file()}.")
+        out.append("Потерялся файл с описанием интересов — по нему модель решает "
+                   "судьбу каждого поста. Откройте раздел «Интересы» и сохраните "
+                   f"текст, файл создастся заново. Ищется он здесь: "
+                   f"{paths.interests_file()}")
 
     try:
         version = int(data.get("schema_version") or 0)
@@ -416,8 +465,9 @@ def problems():
         version = 0
     if version > SCHEMA_VERSION:
         out.append(
-            f"Файл настроек версии {version}, а программа понимает версию {SCHEMA_VERSION} — "
-            "похоже, настройки от более новой версии программы."
+            f"Файл настроек остался от более новой версии программы (его версия "
+            f"{version}, эта программа понимает {SCHEMA_VERSION}). Часть настроек "
+            "может не примениться — стоит обновить программу."
         )
 
     return out

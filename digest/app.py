@@ -381,10 +381,12 @@ class MainWindow(QWidget):
         troubles = settings.blockers()
         if troubles:
             self.status.setStyleSheet(f"color: {self._error_color()};")
+            # Куда идти, сказано в самой строке: разделы разные, и общий
+            # хвост «загляните в Настройки» отправлял бы не туда.
             self.status.setText(
                 "Проверку не запустить: " + troubles[0] +
-                (f" (и ещё {len(troubles) - 1})" if len(troubles) > 1 else "") +
-                ". Загляните в «Настройки».")
+                (f". И ещё {len(troubles) - 1} — смотрите список выше."
+                 if len(troubles) > 1 else "."))
             return
         dry_run = self.dry_run_box.isChecked()
         if not dry_run and confirm:
@@ -536,7 +538,9 @@ class MainWindow(QWidget):
             self.problems_value.setStyleSheet(f"color: {self._error_color()};")
             self.health.setText(f"⚠ Не хватает настроек: {len(troubles)}")
             self.health.setStyleSheet(f"color: {self._error_color()};")
-            self.status.setText("Настройки надо поправить — смотрите список справа.")
+            # «выше», а не «справа»: карточка стоит над этой строкой
+            self.status.setText(
+                "Настройки надо поправить — смотрите список «Что нужно поправить» выше.")
         else:
             self.problems_value.setText("")
             self.health.setText("✓ Готово к работе")
