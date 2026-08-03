@@ -14,7 +14,7 @@ import threading
 
 from PySide6.QtCore import QThread, Signal
 
-from core import logs, lmstudio, settings
+from core import lastrun, logs, lmstudio, settings
 from core.logs import logger
 
 
@@ -77,6 +77,10 @@ class DigestRun(QThread):
                     return
                 lock_taken = True
 
+            # Отметка ставится ДО подъёма модели: оборвать могут и во время
+            # загрузки, и тогда убирать за собой всё равно придётся.
+            lastrun.started(self.dry_run)
+
             # Модель поднимаем и для тестовой проверки тоже: она точно так же
             # спрашивает у модели про каждый пост.
             try:
@@ -84,6 +88,7 @@ class DigestRun(QThread):
             except lmstudio.LMStudioError as e:
                 self.failed.emit(str(e))
                 return
+            lastrun.remember_lms(lms_done)
             if self._cancel.is_set():
                 # успели нажать «Остановить», пока грузилась модель
                 self.done.emit("", True)
@@ -111,6 +116,10 @@ class DigestRun(QThread):
             # иначе модель на несколько гигабайт останется висеть до
             # перезагрузки компьютера. Убираем только то, что подняли сами.
             lmstudio.release(lms_done)
+            # Отметку снимаем последней и всегда: сюда мы попадаем и когда
+            # проверка прошла, и когда упала, и когда её остановили кнопкой.
+            # Во всех трёх случаях уборка отработала — доделывать нечего.
+            lastrun.finished()
             if lock_taken and digest is not None:
                 digest.release_lock()
 

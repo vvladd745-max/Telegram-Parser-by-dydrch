@@ -38,6 +38,9 @@ INTERESTS_TEMPLATE_NAME = "interests.default.txt"
 ICON_NAME = "icon.ico"
 LOGO_NAME = "logo.png"
 STATE_NAME = "state.json"
+# Отметка «проверка идёт»: кладётся в начале, убирается в конце. Осталась
+# на месте — значит проверку оборвали, см. core/lastrun.py.
+RUN_MARK_NAME = "run.json"
 LOCK_NAME = "digest.lock"
 # Замок самой программы — отдельный от замка проверки: они защищают
 APP_LOCK_NAME = "app.lock"        # от разного и снимаются в разное время
@@ -139,6 +142,10 @@ def session_path(name="tg_digest"):
 
 def lock_file():
     return os.path.join(digest_dir(), LOCK_NAME)
+
+
+def run_mark_file():
+    return os.path.join(digest_dir(), RUN_MARK_NAME)
 
 
 def app_lock_file():

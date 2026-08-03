@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
     QLabel, QCheckBox, QMessageBox, QFrame, QStackedWidget,
 )
 
-from core import settings, paths, llm, logs, secrets
+from core import settings, paths, llm, lastrun, lmstudio, logs, secrets
 from tgclient import TelegramWorker
 from wizard import LoginWizard
 from settings_window import SettingsWindow
@@ -107,9 +107,13 @@ class MainWindow(QWidget):
         self.refresh()
         self._look_at_start = self._look()
 
-        # Запуск по расписанию. Через таймер, а не сразу: окно должно сперва
-        # появиться на экране и прорисоваться, иначе человек полминуты видит
-        # серый прямоугольник и решает, что программа повисла.
+        # Через таймер, а не сразу: обе вещи ходят к LM Studio и Telegram,
+        # а окно должно сперва появиться на экране и прорисоваться — иначе
+        # человек несколько секунд видит серый прямоугольник и решает,
+        # что программа повисла. Разбор недоделанной проверки идёт первым:
+        # он освобождает память, которую запуск по расписанию тут же займёт
+        # заново, и порядок здесь важнее лишних секунд.
+        QTimer.singleShot(300, self.check_previous_run)
         if run_now:
             QTimer.singleShot(400, self._start_scheduled_run)
 
@@ -316,6 +320,25 @@ class MainWindow(QWidget):
         state.setColumnStretch(1, 1)
         layout.addWidget(ui.card(self, "Состояние", state))
 
+        # --- недоделанная проверка: карточки нет, пока нечего сказать ---
+        self.unfinished_value = ui.label(wrap=True)
+        self.finish_button = ui.primary_button(self, "Закончить проверку")
+        self.finish_button.clicked.connect(self.finish_previous)
+        self.dismiss_button = ui.flat_button(self, "Понятно, скрыть")
+        self.dismiss_button.clicked.connect(self.dismiss_previous)
+        unfinished_buttons = QHBoxLayout()
+        unfinished_buttons.addWidget(self.finish_button)
+        unfinished_buttons.addWidget(self.dismiss_button)
+        unfinished_buttons.addStretch(1)
+        unfinished_layout = QVBoxLayout()
+        unfinished_layout.setSpacing(8)
+        unfinished_layout.addWidget(self.unfinished_value)
+        unfinished_layout.addLayout(unfinished_buttons)
+        self.unfinished_card = ui.card(self, "Прошлая проверка не закончена",
+                                       unfinished_layout)
+        self.unfinished_card.setVisible(False)
+        layout.addWidget(self.unfinished_card)
+
         # --- претензии к настройкам: карточка появляется, только если есть что сказать ---
         self.problems_value = ui.label(wrap=True, selectable=True)
         problems_layout = QVBoxLayout()
@@ -361,6 +384,50 @@ class MainWindow(QWidget):
 
     # ---------- прогон ----------
 
+    def check_previous_run(self):
+        """Прошлую проверку могли оборвать: закрыть программу, выключить компьютер.
+
+        Память освобождаем молча: модель поднимали мы, нам и убирать — то же
+        самое, что делается в конце обычной проверки, просто задним числом.
+
+        А вот про недоделанную проверку стоит сказать: сама она не доделается.
+        Тестовую не поминаем — доделывать в ней нечего, она ничего не отправляла
+        и закладок не двигала, единственным следом была та самая модель в памяти.
+        """
+        left = lastrun.interrupted()
+        if left is None:
+            return
+        # Пустая запись означает, что в прошлый раз мы ничего не поднимали:
+        # модель уже была в памяти или её грузил не наш прогон. Тогда и убирать
+        # нечего, и говорить в журнале не о чем.
+        ours = left["lms"].get("server") or left["lms"].get("model")
+        if ours:
+            logs.logger.info("Прошлая проверка была оборвана — освобождаю память, "
+                             "занятую моделью.")
+            lmstudio.release(left["lms"])
+        if left["dry_run"]:
+            lastrun.finished()
+            return
+        self.unfinished_value.setText(
+            f"Проверка, начатая {lastrun.when_text(left['when'])}, не была закончена: "
+            "программу закрыли или выключили компьютер.\n\n"
+            "Ничего не потеряно. Отобранное до обрыва уже лежит в вашем канале, "
+            "а закладки остались на последнем отправленном посте: те же посты "
+            "второй раз не придут, а недочитанные каналы дочитаются, как только "
+            "вы запустите проверку снова.")
+        self.unfinished_card.setVisible(True)
+
+    def finish_previous(self):
+        """«Закончить проверку» — это обычная настоящая проверка: она сама
+        продолжит с того места, где оборвалась."""
+        self.dry_run_box.setChecked(False)
+        self.start_run()
+
+    def dismiss_previous(self):
+        """Человек прочитал и не хочет видеть это снова."""
+        lastrun.finished()
+        self.unfinished_card.setVisible(False)
+
     def _start_scheduled_run(self):
         """Проверка, запущенная Планировщиком Windows.
 
@@ -396,6 +463,11 @@ class MainWindow(QWidget):
                 "сдвинутся: те же посты второй раз уже не придут.\n\nЗапускать?")
             if answer != QMessageBox.Yes:
                 return
+
+        # Проверка пошла — напоминание о недоделанной больше не нужно.
+        # Прячем здесь, а не по кнопке: человек мог передумать на вопросе
+        # «запускать?», и тогда напоминание должно остаться на месте.
+        self.unfinished_card.setVisible(False)
 
         hours = int(settings.get("digest.dry_run_hours" if dry_run
                                  else "digest.lookback_hours") or 2)
