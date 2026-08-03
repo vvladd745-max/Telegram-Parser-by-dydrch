@@ -40,6 +40,13 @@ APP_TITLE = "Парсер Telegram-каналов"
 # Окно открывается и сразу начинает настоящую проверку, без вопросов.
 RUN_NOW_FLAG = "--run-now"
 
+# Имя, которым программа представляется Windows. Строка произвольная, но
+# менять её нельзя: по ней система узнаёт закреплённые на панели задач ярлыки.
+# Та же строка прописана ярлыкам в installer.iss — они должны совпадать,
+# иначе запущенная программа и закреплённый ярлык станут двумя разными
+# кнопками на панели.
+APP_USER_MODEL_ID = "Dydrch.TelegramChannelParser"
+
 # как объяснить человеку выбор папки с данными (paths.mode())
 MODE_TEXT = {
     "env": "задан вручную переменной DIGEST_HOME",
@@ -537,6 +544,29 @@ class MainWindow(QWidget):
             self.status.setText("")
 
 
+def name_self_for_taskbar():
+    """Представиться Windows, чтобы на панели задач была наша иконка.
+
+    Кнопку на панели задач Windows рисует НЕ по окну. Она смотрит, чем
+    процесс назвался системе, и если он не назвался никак — подставляет
+    стандартный значок «какое-то окно». В заголовке окна, в «Пуске» и на
+    ярлыке иконка при этом правильная, поэтому промах и незаметен: всё
+    выглядит хорошо ровно до того места, куда человек смотрит чаще всего.
+
+    Звать до создания первого окна: потом Windows уже приняла решение.
+    Не вышло — не беда: программа работает, иконка остаётся стандартной.
+    """
+    if not sys.platform.startswith("win"):
+        return False
+    try:
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_USER_MODEL_ID)
+        return True
+    except Exception as e:
+        logs.logger.warning(f"   [!] Не удалось назваться для панели задач: {e}")
+        return False
+
+
 def take_app_lock():
     """Замок на всю программу. None — значит она уже запущена.
 
@@ -579,6 +609,9 @@ def main(argv=None):
         logs.logger.info(f"Создан файл настроек: {created}")
     # разовый переезд: секреты из settings.json в Диспетчер учётных данных Windows
     settings.migrate_secrets()
+    # строго до QApplication и до первого окна — иначе панель задач уже
+    # выбрала, что рисовать, и переубедить её нечем
+    name_self_for_taskbar()
     app = QApplication(sys.argv)
     icon = ui.app_icon()
     if icon is not None:

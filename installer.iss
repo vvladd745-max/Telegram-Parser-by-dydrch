@@ -14,6 +14,9 @@
 #define AppVersion "1.0"
 #define AppExe "Парсер Telegram-каналов.exe"
 #define BuildDir "dist\Парсер Telegram-каналов"
+; Имя программы для панели задач. Должно совпадать с APP_USER_MODEL_ID
+; в digest\app.py — см. пояснение в разделе [Icons].
+#define AppUserModelID "Dydrch.TelegramChannelParser"
 
 [Setup]
 ; Этот номер связывает установку с обновлениями и удалением. Менять нельзя:
@@ -58,9 +61,15 @@ Source: "{#BuildDir}\*"; DestDir: "{app}"; \
     Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExe}"
+; AppUserModelID — это имя, которым программа представляется панели задач.
+; Оно должно совпадать с APP_USER_MODEL_ID в digest\app.py: по нему Windows
+; понимает, что закреплённый ярлык и запущенное окно — одно и то же.
+; Без совпадения на панели появятся две кнопки вместо одной.
+Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExe}"; \
+    AppUserModelID: "{#AppUserModelID}"
 Name: "{group}\Удалить {#AppName}"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopicon
+Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopicon; \
+    AppUserModelID: "{#AppUserModelID}"
 ; Ярлык удаления в самой папке программы. Inno Setup и так кладёт туда
 ; unins000.exe, но по такому имени человек ничего не найдёт.
 Name: "{app}\Удалить {#AppName}"; Filename: "{uninstallexe}"; \
