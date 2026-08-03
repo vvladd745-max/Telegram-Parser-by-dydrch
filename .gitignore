@@ -2,6 +2,7 @@
 settings.json
 settings.json.tmp
 digest/state.json
+digest/run.json
 digest/*.session
 digest/*.session-journal
 digest/digest.lock
