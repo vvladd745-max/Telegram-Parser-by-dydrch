@@ -44,8 +44,31 @@ class _PrintToLog:
     поэтому строки не удваиваются и петли не возникает.
     """
 
+    # Обычные свойства потока вывода. Старое зеркало отдавало их настоящему
+    # sys.stdout, а этому отдавать некому — потока нет вовсе. Без них
+    # библиотека, спросившая у sys.stdout кодировку, получила бы ошибку.
+    encoding = "utf-8"
+    errors = "replace"
+
     def __init__(self):
         self._buf = ""
+
+    def writable(self):
+        return True
+
+    def readable(self):
+        return False
+
+    def seekable(self):
+        return False
+
+    def fileno(self):
+        # настоящего файла за этим объектом нет, и врать номером нельзя
+        raise OSError("журнал — не файл на диске")
+
+    def writelines(self, lines):
+        for line in lines:
+            self.write(line)
 
     def write(self, data):
         # print зовёт write несколько раз: отдельно текст, отдельно перевод
