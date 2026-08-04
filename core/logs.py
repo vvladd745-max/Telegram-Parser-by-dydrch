@@ -123,9 +123,18 @@ def _console_stream():
     """Поток для вывода на экран или None, если консоли нет.
 
     Именно этот случай — .exe без консоли: там sys.stdout и sys.stderr
-    равны None, и писать некуда."""
+    равны None, и писать некуда.
+
+    Своё же зеркало печати потоком НЕ считается. Иначе выходит петля:
+    в sys.stdout к этому моменту стоит зеркало, журнал подключает его как
+    экран и начинает писать сам в себя. Каждая строка попадает в окно дважды —
+    ровно это и случилось, когда setup позвали второй раз (при старте окна
+    и потом на каждую проверку).
+    """
     for stream in (sys.stderr, sys.stdout):
-        if stream is not None and hasattr(stream, "write"):
+        if stream is None or stream is _mirror:
+            continue
+        if hasattr(stream, "write"):
             return stream
     return None
 
