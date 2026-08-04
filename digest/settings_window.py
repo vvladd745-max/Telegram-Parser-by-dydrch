@@ -27,6 +27,8 @@ TIP_API = 'Ключи вашего личного приложения Telegram 
 
 TIP_BOT = 'Бот присылает в Telegram короткий итог: сколько постов проверено и сколько отобрано.\n\nБез бота уведомлений не будет — придётся самому открывать окно программы\nи смотреть, закончилась проверка или ещё идёт.\n\nГде взять: напишите @BotFather команду /newbot — он выдаст токен.\nСвой chat_id узнаете у @userinfobot.'
 
+TIP_MODEL = 'Программа проверена только на Qwen3-8B-128K в LM Studio: с ней отбор постов\nработает так, как задумано.\n\nСюда можно вписать любую другую модель — и локальную поменьше, и облачную\nпо адресу с ключом. Технически это работает, но как чужая модель справится\nс отбором постов, мы не проверяли и обещать ничего не можем.\n\nЕсли поменяли — нажмите «Проверить модель», а потом прогоните тестовую\nпроверку: на ней видно, разумно ли модель отбирает.'
+
 
 class ModelCheck(QThread):
     """Проверка модели в отдельном потоке: сеть не должна морозить окно."""
@@ -115,8 +117,11 @@ class SettingsWindow(QWidget):
         self.check_result.setTextInteractionFlags(Qt.TextSelectableByMouse)
 
         model = QFormLayout()
-        model.addRow("Адрес:", self.model_url)
-        model.addRow("Имя модели:", self.model_name)
+        # Кругляшок стоит на обеих строках, как у api_id и api_hash: модель
+        # меняют то адресом (облачная), то именем (другая локальная), и человек
+        # смотрит на то поле, которое правит.
+        model.addRow(ui.labeled(self, "Адрес:", TIP_MODEL), self.model_url)
+        model.addRow(ui.labeled(self, "Имя модели:", TIP_MODEL), self.model_name)
         model.addRow("Ключ:", self.model_key)
         model.addRow("", self.check_button)
         model.addRow("", self.check_result)
