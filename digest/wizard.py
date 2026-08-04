@@ -12,10 +12,11 @@
 «Настройках» они остаются — там их правят, когда всё уже работает.
 """
 import ui
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QUrl, Signal
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QFormLayout, QStackedWidget, QWidget,
-    QCheckBox, QLabel, QLineEdit, QPushButton, QMessageBox,
+    QCheckBox, QDialog, QLabel, QLineEdit, QPushButton, QMessageBox, QScrollArea,
 )
 
 from core import settings
@@ -23,11 +24,110 @@ from core.logs import logger
 
 PAGE_PHONE, PAGE_CODE, PAGE_PASSWORD, PAGE_DONE = range(4)
 
+KEYS_URL = "https://my.telegram.org"
+
 ACCESS_TEXT = (
     "Это ключи вашего личного приложения Telegram: по ним программа читает "
-    "каналы от вашего имени. Выдаются бесплатно и один раз — на my.telegram.org, "
-    "в разделе API development tools. Название приложения в форме любое."
+    "каналы от вашего имени. Выдаются бесплатно и один раз. Если не знаете, "
+    "где их взять, — нажмите кнопку выше, там всё расписано по шагам."
 )
+
+# Инструкция вынесена в отдельное окно, а не в подсказку под кругляшком:
+# подсказка живёт, пока мышь висит над значком, а по этой инструкции человек
+# ходит несколько минут, переключаясь между программой и браузером.
+KEYS_HELP = """
+<p>Программа читает каналы <b>от вашего имени</b>, как это делает обычный
+Telegram на телефоне. Чтобы Telegram её пустил, нужны два кода — их выдают
+бесплатно и один раз на всю жизнь.</p>
+
+<p><b>Шаг 1.</b> Откройте <b>my.telegram.org</b> — кнопка внизу этого окна.</p>
+
+<p><b>Шаг 2.</b> Введите номер телефона того аккаунта Telegram, который
+подписан на нужные каналы. В международном виде, начиная с плюса:
+<b>+79161234567</b>.</p>
+
+<p><b>Шаг 3.</b> Код придёт <b>не в СМС</b>, а в само приложение Telegram —
+в чат с названием «Telegram» и синей галочкой. Это то место, где спотыкаются
+почти все: люди ждут сообщение на телефон и не находят его. Введите код
+на сайте.</p>
+
+<p><b>Шаг 4.</b> На открывшейся странице выберите пункт
+<b>API development tools</b>.</p>
+
+<p><b>Шаг 5.</b> Заполните форму. Обязательных полей всего два:</p>
+<ul>
+<li><b>App title</b> — название, любое. Например: <b>digest</b></li>
+<li><b>Short name</b> — короткое имя: только латинские буквы и цифры,
+от 5 знаков. Например: <b>digest01</b></li>
+<li><b>URL</b>, <b>Description</b> — можно оставить пустыми</li>
+<li><b>Platform</b> — выберите <b>Desktop</b></li>
+</ul>
+
+<p><b>Шаг 6.</b> Нажмите <b>Create application</b>.</p>
+
+<p><b>Шаг 7.</b> На той же странице появятся <b>App api_id</b> — число,
+и <b>App api_hash</b> — длинная строка из букв и цифр. Их и впишите
+в программу.</p>
+
+<p>Создавать приложение нужно <b>один раз</b>. Если потеряли коды — просто
+зайдите на my.telegram.org снова, они лежат на том же месте.</p>
+
+<hr>
+
+<p><b>Если сайт отвечает ошибкой</b></p>
+
+<p>my.telegram.org капризный: он может ругаться, даже когда всё заполнено
+правильно. Это не ваша вина и не поломка программы. Что обычно помогает:</p>
+<ul>
+<li>повторить попытку через несколько минут — чаще всего дело в этом;</li>
+<li>открыть сайт в другом браузере или в приватном окне;</li>
+<li>убрать из названий кириллицу, пробелы и знаки препинания — оставить
+только латинские буквы и цифры;</li>
+<li>если включён VPN — попробовать и с ним, и без него.</li>
+</ul>
+
+<p>Сайт принадлежит Telegram, и повлиять на него мы не можем. Но обычно
+после одной-двух попыток форма проходит.</p>
+"""
+
+
+def show_keys_help(parent):
+    """Окно с пошаговой инструкцией «где взять api_id и api_hash».
+
+    Открывается по кнопке рядом с полями. Текст длинный и с прокруткой:
+    человек читает его, переключаясь на браузер и обратно, поэтому окно
+    немодальное по духу — но модальным его делает Qt, чтобы не потерялось
+    за главным окном.
+    """
+    dialog = QDialog(parent)
+    dialog.setWindowTitle("Где взять api_id и api_hash")
+    dialog.setMinimumSize(560, 520)
+
+    body = QLabel(KEYS_HELP)
+    body.setWordWrap(True)
+    body.setTextInteractionFlags(Qt.TextSelectableByMouse)
+    body.setAlignment(Qt.AlignTop)
+
+    scroll = QScrollArea()
+    scroll.setWidgetResizable(True)
+    scroll.setWidget(body)
+    scroll.setFrameShape(QScrollArea.NoFrame)
+
+    open_button = QPushButton("Открыть my.telegram.org")
+    open_button.setDefault(True)
+    open_button.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(KEYS_URL)))
+    close_button = QPushButton("Закрыть")
+    close_button.clicked.connect(dialog.accept)
+
+    row = QHBoxLayout()
+    row.addWidget(open_button)
+    row.addStretch(1)
+    row.addWidget(close_button)
+
+    layout = QVBoxLayout(dialog)
+    layout.addWidget(scroll)
+    layout.addLayout(row)
+    dialog.exec()
 
 
 def _page(title, hint, *widgets):
@@ -78,11 +178,12 @@ class LoginWizard(QWidget):
         access.addRow("api_id:", self.api_id)
         access.addRow("api_hash:", self.api_hash)
         access.addRow("", self.show_keys)
-        access.addRow("", ui.link(
-            self, "Получить api_id и api_hash на my.telegram.org",
-            "https://my.telegram.org",
-            "Откроется сайт Telegram. Войдите по номеру телефона, раздел "
-            "API development tools."))
+        # Кнопка вместо ссылки: раньше человек уходил на my.telegram.org и
+        # оказывался там один на один с англоязычной формой, не понимая ни
+        # куда жать, ни что заполнять. Сначала инструкция, ссылка — в ней.
+        self.keys_help_button = QPushButton("Как получить api_id и api_hash")
+        self.keys_help_button.clicked.connect(lambda: show_keys_help(self))
+        access.addRow("", self.keys_help_button)
         access.addRow(ui.label(ACCESS_TEXT, tone="muted", widget=self, wrap=True))
         self.access_card = ui.card(self, "Ключи доступа", access)
 
