@@ -4,10 +4,10 @@
 logs.setup("digest") в начале работы — и все сообщения уходят ещё и в
 <ГГГГ-ММ-ДД>_<имя>.log в папке логов, которую указывает core.paths.
 
-Почему подмена sys.stdout стала условной: в собранном .exe без консоли
-sys.stdout равен None, и безусловная подмена падает на первой же строке.
-Поэтому файл — единственный обязательный канал, а консоль и зеркало обычного
-вывода подключаются, только если писать действительно есть куда.
+В собранном .exe без консоли sys.stdout и sys.stderr равны None. Поэтому
+файл — единственный обязательный канал, а консоль подключается, только если
+писать действительно есть куда. Обычный print при этом не теряется: он уходит
+не в поток, а в сам журнал, и оттуда достаётся всем получателям.
 """
 import sys, os, datetime, atexit, threading
 
@@ -25,80 +25,75 @@ FILE_FORMAT = "{time:YYYY-MM-DD HH:mm:ss} | {level: <7} | {message}"
 _console_id = None      # id консольного обработчика loguru
 _file_id = None         # id файлового обработчика loguru
 _mirror = None          # подменённый sys.stdout, пока зеркало print включено
-_mirror_file = None     # файл, в который зеркало пишет
+_mirror_prev = None     # что стояло в sys.stdout до подмены (бывает и None)
 
 
-class _MirrorStdout:
-    """Обычный print уходит и на экран, и в файл журнала.
+class _PrintToLog:
+    """Обычный print уходит в журнал, а журнал раздаёт строку всем получателям:
+    в файл, на экран и в окно программы, если оно подписано на прогон.
 
-    Нужен ради topic_finder: он пишет только print, и без зеркала его лог
-    состоял бы из одной шапки запуска. Записи loguru сюда не попадают: его
-    консольный обработчик держит поток, взятый при подключении, и подмену
-    sys.stdout уже не видит — поэтому строки не удваиваются.
+    Нужен ради topic_finder: он пишет только print, и без этого его не слышно
+    вовсе. Раньше зеркало оборачивало настоящий sys.stdout и писало в файл
+    само — а в собранной программе без консоли sys.stdout равен None,
+    оборачивать нечего, и зеркало не включалось. При пустом sys.stdout print
+    молча ничего не делает, поэтому весь вывод инструмента пропадал целиком:
+    поиск тем работал полторы минуты и не сказал ни слова.
+
+    Записи самого loguru сюда не возвращаются: его консольный обработчик
+    держит поток, взятый при подключении, и подмену sys.stdout не видит —
+    поэтому строки не удваиваются и петли не возникает.
     """
 
-    def __init__(self, stream, fh):
-        self._stream = stream
-        self._fh = fh
+    def __init__(self):
+        self._buf = ""
 
     def write(self, data):
-        self._stream.write(data)
-        self._stream.flush()
-        try:
-            self._fh.write(data)
-            self._fh.flush()
-        except Exception:
-            pass          # проблемы с логом не должны ронять агента
+        # print зовёт write несколько раз: отдельно текст, отдельно перевод
+        # строки. Без сборки по строкам каждый кусок стал бы своей записью.
+        self._buf += str(data)
+        while "\n" in self._buf:
+            line, self._buf = self._buf.split("\n", 1)
+            self._emit(line)
         return len(data)
 
     def flush(self):
-        for target in (self._stream, self._fh):
-            try:
-                target.flush()
-            except Exception:
-                pass
+        """Отдаёт хвост без перевода строки — иначе последняя строка пропала бы."""
+        if self._buf:
+            line, self._buf = self._buf, ""
+            self._emit(line)
+
+    @staticmethod
+    def _emit(line):
+        line = line.rstrip()
+        if line:      # пустые строки-отбивки в журнал не тащим
+            logger.info(line)
 
     def isatty(self):
-        return getattr(self._stream, "isatty", lambda: False)()
-
-    def __getattr__(self, name):
-        # всё остальное (encoding, buffer и прочее) отдаёт настоящий поток
-        return getattr(self._stream, name)
+        return False
 
 
-def _install_print_mirror(path):
-    """Включает зеркало print в файл журнала.
+def _install_print_mirror():
+    """Направляет обычный print в журнал.
 
-    Ничего не делает, если писать некуда: в .exe без консоли sys.stdout равен
-    None, и подменять его нельзя — на этом и падал старый код."""
-    global _mirror, _mirror_file
+    Работает и без консоли: получателям строки раздаёт loguru, а не поток."""
+    global _mirror, _mirror_prev
     if _mirror is not None:
         return
-    stream = sys.stdout
-    if stream is None or not hasattr(stream, "write"):
-        return
-    try:
-        fh = open(path, "a", encoding="utf-8")
-    except Exception:
-        return
-    _mirror_file = fh
-    _mirror = _MirrorStdout(stream, fh)
+    _mirror_prev = sys.stdout
+    _mirror = _PrintToLog()
     sys.stdout = _mirror
     atexit.register(_remove_print_mirror)
 
 
 def _remove_print_mirror():
-    """Возвращает sys.stdout на место и закрывает файл. Зовётся при выходе."""
-    global _mirror, _mirror_file
-    if _mirror is not None and sys.stdout is _mirror:
-        sys.stdout = _mirror._stream
+    """Возвращает sys.stdout на место. Зовётся при выходе."""
+    global _mirror, _mirror_prev
+    if _mirror is not None:
+        _mirror.flush()
+        if sys.stdout is _mirror:
+            sys.stdout = _mirror_prev
     _mirror = None
-    if _mirror_file is not None:
-        try:
-            _mirror_file.close()
-        except Exception:
-            pass
-        _mirror_file = None
+    _mirror_prev = None
 
 
 def _console_stream():
@@ -179,10 +174,9 @@ def _install_excepthooks():
 def setup(name, mirror_print=True):
     """Включает запись журнала в файл. Возвращает путь к логу (или "" при неудаче).
 
-    mirror_print — дублировать ли в тот же файл обычный вывод print. По
-    умолчанию да: часть агентов пишет только print, и без этого их лог пуст.
-    Зеркало включается ТОЛЬКО при живой консоли, поэтому в сборке без неё
-    ничего не подменяется.
+    mirror_print — направлять ли обычный вывод print в журнал. По умолчанию
+    да: часть агентов пишет только print, и без этого их не слышно вовсе.
+    Работает в том числе в сборке без консоли, где sys.stdout равен None.
 
     Имя и первый аргумент менять нельзя: setup вызывает не только digest.
     """
@@ -211,7 +205,7 @@ def setup(name, mirror_print=True):
         # зеркало ставим последним: к этому моменту loguru уже держит
         # настоящий поток, и подмена sys.stdout его не касается
         if mirror_print:
-            _install_print_mirror(path)
+            _install_print_mirror()
         _install_excepthooks()
         return path
     except Exception as e:
