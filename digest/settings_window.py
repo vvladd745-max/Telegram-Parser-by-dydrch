@@ -22,6 +22,7 @@ import ui
 from core import llm, settings
 from core.logs import logger
 from runner import topics_available
+from topics_window import show_topics
 from wizard import show_keys_help
 
 
@@ -191,8 +192,14 @@ class SettingsWindow(QWidget):
             topics_row.addWidget(ui.hint(self, TIP_TOPICS))
             topics_row.addStretch(1)
 
+            # Список направлений — отдельным окном: два списка рядом занимают
+            # много места, а заходят сюда редко.
+            self.topics_button = QPushButton("Направления сео-поиска")
+            self.topics_button.clicked.connect(lambda: show_topics(self))
+
             topics = QFormLayout()
             topics.addRow(topics_head)
+            topics.addRow("", self.topics_button)
             topics_box = QGroupBox("Сео-поиск")
             topics_box.setLayout(topics)
 
