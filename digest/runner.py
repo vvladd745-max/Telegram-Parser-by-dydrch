@@ -10,6 +10,8 @@
     блокирующий requests подвешивал прогон намертво.
 """
 import asyncio
+import os
+import sys
 import threading
 
 from PySide6.QtCore import QThread, Signal
@@ -97,6 +99,15 @@ class DigestRun(QThread):
             summary = asyncio.run(digest.main(
                 dry_run=self.dry_run, hours=self.hours,
                 progress=self._on_progress, cancel=self._cancel))
+
+            # Поиск тем — здесь, пока модель ещё в памяти: поднимать её второй раз
+            # значило бы ждать лишние полминуты и занять гигабайты дважды.
+            # Раньше это был шаг [5/6] в run_all.bat.
+            if settings.get("digest.find_topics", False):
+                if self._cancel.is_set():
+                    logger.info("Остановлено — темы не ищу.")
+                else:
+                    self._find_topics()
         except ValueError as e:
             # Telethon так ругается на пустые api_id и api_hash
             logger.exception("Проверка упала")
@@ -135,6 +146,46 @@ class DigestRun(QThread):
                 logger.warning(f"   [!] отчёт боту не ушёл: {e}")
 
         self.done.emit(summary or "", self._stopped)
+
+    # ---------- поиск тем ----------
+
+    def _find_topics(self):
+        """Шаг после проверки постов: собрать темы для статей.
+
+        Почему так:
+          - импорт ленивый, как и у digest: без папки topic_finder программа
+            должна работать как ни в чём не бывало, а не падать при старте;
+          - зовём синхронно, прямо в этом потоке. Цикл asyncio уже закрыт,
+            поэтому блокирующий requests внутри ничего не подвесит — по той же
+            причине, по которой отчёт боту уходит отсюда же, а не из main();
+          - своя обёртка try: упавший поиск тем не должен превращаться
+            в «проверка прервалась». Посты к этому моменту уже разосланы.
+
+        Кнопка «Остановить» поиск тем не прерывает: механизма остановки
+        внутри topic_finder нет.
+        """
+        try:
+            tf_dir = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "topic_finder")
+            if tf_dir not in sys.path:
+                sys.path.insert(0, tf_dir)
+            import topic_finder
+        except Exception as e:
+            logger.warning(f"   [!] поиск тем недоступен: {e}")
+            return
+
+        logger.info("Ищу темы для статей...")
+        try:
+            # Режим наследуем у проверки: тестовая проверка — тестовый поиск,
+            # без отправки и без записи. Иначе правку было бы не проверить:
+            # галочка «Тестовая проверка» стоит по умолчанию.
+            topic_finder.main(dry_run=self.dry_run)
+        except topic_finder.TopicFinderError as e:
+            # Ожидаемая беда, о которой есть что сказать словами
+            logger.warning(f"   [!] темы не искались: {e}")
+        except Exception as e:
+            logger.exception("Поиск тем упал")
+            logger.warning(f"   [!] поиск тем прервался: {e}. Подробности — в журнале.")
 
     # ---------- мостики в окно ----------
 

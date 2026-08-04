@@ -40,6 +40,9 @@ DEFAULTS = {
         "flood_wait_cap": 600,   # дольше ждать FloodWait не будем
         "sent_keep": 400,        # сколько id отправленных постов помним на канал
         "extract_seeds": True,   # копить поисковые затравки для topic_finder
+        "find_topics": False,    # искать темы для статей сразу после проверки.
+                                 # По умолчанию выключено: это личный инструмент
+                                 # автора, в поставку для коллег он не входит.
     },
     "model": {
         "url": "http://localhost:1234/v1/chat/completions",
