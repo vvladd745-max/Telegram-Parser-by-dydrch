@@ -22,6 +22,7 @@ import ui
 from core import llm, settings
 from core.logs import logger
 from runner import topics_available
+from wizard import show_keys_help
 
 
 TIP_API = 'Ключи вашего личного приложения Telegram — программа читает каналы от вашего имени.\n\nГде взять: my.telegram.org → войдите по номеру телефона → API development tools →\nзаполните простую форму (название любое). Telegram выдаст api_id (число)\nи api_hash (длинная строка из букв и цифр).\n\nВыдаются бесплатно и один раз, никому их не показывайте.'
@@ -86,10 +87,11 @@ class SettingsWindow(QWidget):
         tg.addRow(ui.labeled(self, "api_id:", TIP_API), self.api_id)
         tg.addRow(ui.labeled(self, "api_hash:", TIP_API), self.api_hash)
         tg.addRow("Куда слать посты:", self.target)
-        tg.addRow("", ui.link(self, "Получить api_id и api_hash на my.telegram.org",
-                              "https://my.telegram.org/apps",
-                              "Откроется в браузере. Войдите по номеру телефона, "
-                              "раздел API development tools."))
+        # Та же кнопка, что и на странице входа, и та же инструкция: сюда идут,
+        # когда ключи протухли или их меняют, — и растеряться здесь так же легко.
+        self.keys_help_button = QPushButton("Как получить api_id и api_hash")
+        self.keys_help_button.clicked.connect(lambda: show_keys_help(self))
+        tg.addRow("", self.keys_help_button)
         tg_box = QGroupBox("Доступ к Telegram")
         tg_box.setLayout(tg)
 
