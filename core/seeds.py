@@ -2,13 +2,36 @@
 
 digest вытаскивает из интересных постов короткие фразы и складывает сюда,
 а topic_finder подхватывает их как дополнительные затравки для Bukvarix.
-Файл лежит в корне проекта (core/config.FRESH_SEEDS_FILE) — виден обоим.
+
+Где лежит файл, знает core/paths.py — там же, где остальные данные человека.
+Раньше он лежал рядом с кодом, и в собранной программе это означало «внутри
+неё»: накопленное стиралось при каждом обновлении, а на чужой машине могло
+и не записаться вовсе. Старый файл переезжает сам, один раз.
 """
-import json, os, datetime
-from . import config
+import json, os, datetime, shutil
+from . import config, paths
+
+_migrated = False
+
+
+def _path():
+    """Путь к файлу. Заодно разово переносит старый, лежавший рядом с кодом."""
+    global _migrated
+    new = paths.fresh_seeds_file()
+    if not _migrated:
+        _migrated = True
+        old = os.path.join(config.PROJECT_ROOT, paths.FRESH_SEEDS_NAME)
+        try:
+            if os.path.exists(old) and not os.path.exists(new) and old != new:
+                os.makedirs(os.path.dirname(new), exist_ok=True)
+                shutil.move(old, new)
+        except OSError:
+            pass          # не перенеслось — соберётся заново, ронять нечего
+    return new
+
 
 def _load():
-    path = config.FRESH_SEEDS_FILE
+    path = _path()
     if os.path.exists(path):
         try:
             with open(path, "r", encoding="utf-8") as f:
@@ -21,12 +44,14 @@ def _load():
 
 def _save(seeds):
     # атомарная запись: temp-файл рядом + os.replace (прерывание не оставит битый JSON)
-    tmp = config.FRESH_SEEDS_FILE + ".tmp"
+    path = _path()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump({"seeds": seeds}, f, ensure_ascii=False, indent=2)
         f.flush()
         os.fsync(f.fileno())
-    os.replace(tmp, config.FRESH_SEEDS_FILE)
+    os.replace(tmp, path)
 
 def _norm(p):
     return " ".join(p.lower().split())
@@ -53,6 +78,11 @@ def add_fresh_seeds(phrases, max_keep=200):
     seeds = seeds[-max_keep:]
     _save(seeds)
     return len(seeds)
+
+def stored_count():
+    """Сколько фраз накоплено всего, включая те, что уже состарились."""
+    return len(_load())
+
 
 def load_fresh_seeds(max_age_days=10, limit=12):
     """Возвращает фразы не старше max_age_days: сначала чаще встречавшиеся,

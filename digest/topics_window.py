@@ -26,8 +26,26 @@ from PySide6.QtWidgets import (
 )
 
 import ui
-from core import spheres
+from core import seeds as fresh, spheres
 from core.logs import logger
+
+# Первая строка в списке направлений — не направление из файла, а то, что
+# проверка каналов насобирала сама. Стоит сверху нарочно: это единственное,
+# что меняется само по себе, и смотреть туда хочется первым делом.
+FRESH_TITLE = "Найденное в Telegram"
+
+FRESH_NOTE = (
+    "Это программа собрала сама из постов, которые сочла интересными. "
+    "Править список нельзя: он обновляется каждой настоящей проверкой. "
+    "Сео-поиск берёт отсюда до 12 самых свежих фраз не старше 10 дней "
+    "и ищет по ним наравне с обычными направлениями."
+)
+
+FRESH_EMPTY = (
+    "Пока пусто. Список наполняется НАСТОЯЩИМИ проверками — в тестовых "
+    "программа до этого шага не доходит. Пройдёт первая настоящая проверка "
+    "с интересными постами — здесь появятся фразы."
+)
 
 HEAD = (
     "Направление — это тема, по которой сео-поиск ищет, что люди спрашивают "
@@ -84,17 +102,23 @@ class TopicsWindow(QDialog):
         self.seeds = QListWidget()
         self.seeds.itemChanged.connect(self.on_seed_edited)
 
-        add_seed = QPushButton("Добавить")
-        add_seed.clicked.connect(self.add_seed)
-        del_seed = QPushButton("Удалить")
-        del_seed.clicked.connect(self.remove_seed)
+        # Пояснение показывается только для «Найденного в Telegram»: у обычных
+        # направлений оно было бы пустой строкой, съедающей место.
+        self.fresh_note = ui.label("", tone="muted", widget=self, wrap=True)
+        self.fresh_note.setVisible(False)
+
+        self.add_seed_button = QPushButton("Добавить")
+        self.add_seed_button.clicked.connect(self.add_seed)
+        self.del_seed_button = QPushButton("Удалить")
+        self.del_seed_button.clicked.connect(self.remove_seed)
 
         seeds_buttons = QHBoxLayout()
-        seeds_buttons.addWidget(add_seed)
-        seeds_buttons.addWidget(del_seed)
+        seeds_buttons.addWidget(self.add_seed_button)
+        seeds_buttons.addWidget(self.del_seed_button)
         seeds_buttons.addStretch(1)
 
         seeds_inner = QVBoxLayout()
+        seeds_inner.addWidget(self.fresh_note)
         seeds_inner.addWidget(self.seeds)
         seeds_inner.addLayout(seeds_buttons)
         self.seeds_card = ui.card(self, "Запросы направления", seeds_inner)
@@ -149,21 +173,26 @@ class TopicsWindow(QDialog):
         self.fill_blocks()
 
     def fill_blocks(self, select=0):
+        """Наполняет левый список. Первой строкой всегда «Найденное в Telegram»,
+        поэтому направление под номером N живёт в строке N+1."""
         # Пока наполняем список, itemChanged срабатывает на каждой строке.
         # Без этой заглушки первая же вставка переименовала бы чужое направление.
         self.blocks.blockSignals(True)
         self.blocks.clear()
+        head = QListWidgetItem(FRESH_TITLE)
+        # переименовать его нельзя: это не строка из файла, а живой список
+        head.setFlags(head.flags() & ~Qt.ItemIsEditable)
+        self.blocks.addItem(head)
         for block in self.data["blocks"]:
             item = QListWidgetItem(str(block.get("name") or block.get("id") or ""))
             item.setFlags(item.flags() | Qt.ItemIsEditable)
             self.blocks.addItem(item)
         self.blocks.blockSignals(False)
-        if self.data["blocks"]:
-            self.blocks.setCurrentRow(min(select, len(self.data["blocks"]) - 1))
-        else:
-            self.fill_seeds(None)
+        self.blocks.setCurrentRow(min(select, self.blocks.count() - 1))
+        self.on_block_changed(self.blocks.currentRow())
 
     def fill_seeds(self, block):
+        self.fresh_note.setVisible(False)
         self.seeds.blockSignals(True)
         self.seeds.clear()
         if block is not None:
@@ -173,9 +202,42 @@ class TopicsWindow(QDialog):
                 self.seeds.addItem(item)
         self.seeds.blockSignals(False)
         self.seeds.setEnabled(block is not None)
+        self.add_seed_button.setEnabled(block is not None)
+        self.del_seed_button.setEnabled(block is not None)
+
+    def fill_fresh(self):
+        """Показывает то, что проверка каналов насобирала сама.
+
+        Ровно то же, что возьмёт сео-поиск: свежие фразы, не старше десяти
+        дней. Список только для чтения — его пишет проверка, а не человек.
+        """
+        self.seeds.blockSignals(True)
+        self.seeds.clear()
+        try:
+            phrases = fresh.load_fresh_seeds()
+            total = fresh.stored_count()
+        except Exception as e:
+            phrases, total = [], 0
+            logger.warning(f"   [!] не смог прочитать найденное в Telegram: {e}")
+        for phrase in phrases:
+            item = QListWidgetItem(str(phrase))
+            item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+            self.seeds.addItem(item)
+        self.seeds.blockSignals(False)
+        self.seeds.setEnabled(True)
+        # править нечего: список живёт своей жизнью
+        self.add_seed_button.setEnabled(False)
+        self.del_seed_button.setEnabled(False)
+        if phrases:
+            self.fresh_note.setText(
+                f"{FRESH_NOTE}\n\nСейчас в запасе {total}, из них свежих — {len(phrases)}.")
+        else:
+            self.fresh_note.setText(FRESH_EMPTY)
+        self.fresh_note.setVisible(True)
 
     def current_block(self):
-        row = self.blocks.currentRow()
+        """Направление под курсором. None — если выбрано «Найденное в Telegram»."""
+        row = self.blocks.currentRow() - 1        # первая строка не из файла
         if 0 <= row < len(self.data["blocks"]):
             return self.data["blocks"][row]
         return None
@@ -183,7 +245,10 @@ class TopicsWindow(QDialog):
     # ---------- правки ----------
 
     def on_block_changed(self, row):
-        self.fill_seeds(self.current_block())
+        if row == 0:
+            self.fill_fresh()
+        else:
+            self.fill_seeds(self.current_block())
 
     def on_block_renamed(self, item):
         block = self.current_block()
@@ -223,13 +288,17 @@ class TopicsWindow(QDialog):
         block = {"id": spheres.new_id(self.data["blocks"], name),
                  "name": name, "seeds": []}
         self.data["blocks"].append(block)
-        self.fill_blocks(select=len(self.data["blocks"]) - 1)
+        self.fill_blocks(select=len(self.data["blocks"]))   # +1 на первую строку
         # сразу отдаём название в правку: имя по умолчанию всё равно менять
         self.blocks.editItem(self.blocks.currentItem())
         self.show_message("Впишите название, потом добавьте запросы справа.")
 
     def remove_block(self):
-        row = self.blocks.currentRow()
+        if self.blocks.currentRow() == 0:
+            self.show_message("«Найденное в Telegram» удалить нельзя: этот список "
+                              "программа ведёт сама.", error=True)
+            return
+        row = self.blocks.currentRow() - 1
         if not (0 <= row < len(self.data["blocks"])):
             return
         if len(self.data["blocks"]) == 1:
@@ -243,7 +312,7 @@ class TopicsWindow(QDialog):
         if answer != QMessageBox.Yes:
             return
         self.data["blocks"].pop(row)
-        self.fill_blocks(select=row)
+        self.fill_blocks(select=row + 1)      # +1: первая строка не из файла
         self.show_message("Удалено. Пока не нажали «Сохранить», можно закрыть "
                           "окно и всё останется как было.")
 
