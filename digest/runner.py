@@ -16,15 +16,19 @@ import threading
 
 from PySide6.QtCore import QThread, Signal
 
-from core import lastrun, logs, lmstudio, settings
+from core import lastrun, logs, lmstudio, paths, settings
 from core.logs import logger
 
 
 def _topics_dir():
     """Где лежит личный инструмент поиска тем. Считается здесь и только здесь:
-    путь нужен и прогону, и окну настроек."""
-    return os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "topic_finder")
+    путь нужен и прогону, и окну настроек.
+
+    Ищем рядом с программой (paths.app_dir): в сборке это папка с .exe,
+    из исходников — корень проекта. Внутрь сборки инструмент не запекается,
+    он лежит обычной папкой снаружи — так его можно положить себе и не отдать
+    коллегам вместе с установщиком."""
+    return os.path.join(paths.app_dir(), "topic_finder")
 
 
 def topics_available():

@@ -57,7 +57,11 @@ Name: "desktopicon"; Description: "Создать ярлык на рабочем
 
 [Files]
 ; вся папка сборки целиком, вместе со служебной _internal
+; Кроме topic_finder: это личный инструмент автора. Он лежит отдельной папкой
+; рядом с собранной программой — и именно поэтому его надо назвать здесь явно,
+; иначе он уехал бы к людям вместе с установщиком.
 Source: "{#BuildDir}\*"; DestDir: "{app}"; \
+    Excludes: "topic_finder,topic_finder\*"; \
     Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
