@@ -45,6 +45,10 @@ LOCK_NAME = "digest.lock"
 # Замок самой программы — отдельный от замка проверки: они защищают
 APP_LOCK_NAME = "app.lock"        # от разного и снимаются в разное время
 DIGEST_DIRNAME = "digest"
+# Данные поиска тем: список направлений, история отданных тем, кэш и выгрузки.
+# Раньше всё это лежало рядом со скриптом — и терялось при каждой пересборке
+# программы, потому что папку сборки PyInstaller сносит целиком.
+TOPICS_DIRNAME = "topics"
 LOGS_DIRNAME = "logs"
 
 
@@ -118,6 +122,11 @@ def mode():
 def digest_dir():
     """Рабочая папка дайджеста: состояние, файл сессии, лок."""
     return os.path.join(home(), DIGEST_DIRNAME)
+
+
+def topics_dir():
+    """Рабочая папка поиска тем: направления, история, кэш, выгрузки."""
+    return os.path.join(home(), TOPICS_DIRNAME)
 
 
 def settings_file():
