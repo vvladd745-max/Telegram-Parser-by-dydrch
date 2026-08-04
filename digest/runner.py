@@ -184,11 +184,24 @@ class DigestRun(QThread):
         Кнопка «Остановить» поиск тем не прерывает: механизма остановки
         внутри topic_finder нет.
         """
+        if not topics_available():
+            logger.warning("   [!] поиск тем не найден рядом с программой — пропускаю.")
+            return
+
         try:
             tf_dir = _topics_dir()
             if tf_dir not in sys.path:
                 sys.path.insert(0, tf_dir)
             import topic_finder
+            # Убеждаемся, что нашёлся именно наш модуль, и забираем нужное
+            # ЗДЕСЬ, внутри try. Рядом может оказаться пустая папка с тем же
+            # именем — Python отдаёт такую как пакет, и обращение к
+            # topic_finder.TopicFinderError в строке except уронило бы сам
+            # обработчик ошибок. Упавший except не ловится соседним except:
+            # прогон завершился бы криком «проверка прервалась», хотя посты
+            # к тому времени уже разосланы.
+            run_topics = topic_finder.main
+            TopicsError = topic_finder.TopicFinderError
         except Exception as e:
             logger.warning(f"   [!] поиск тем недоступен: {e}")
             return
@@ -198,8 +211,8 @@ class DigestRun(QThread):
             # Режим наследуем у проверки: тестовая проверка — тестовый поиск,
             # без отправки и без записи. Иначе правку было бы не проверить:
             # галочка «Тестовая проверка» стоит по умолчанию.
-            topic_finder.main(dry_run=self.dry_run)
-        except topic_finder.TopicFinderError as e:
+            run_topics(dry_run=self.dry_run)
+        except TopicsError as e:
             # Ожидаемая беда, о которой есть что сказать словами
             logger.warning(f"   [!] темы не искались: {e}")
         except Exception as e:
