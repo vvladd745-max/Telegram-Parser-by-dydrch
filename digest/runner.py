@@ -20,6 +20,22 @@ from core import lastrun, logs, lmstudio, settings
 from core.logs import logger
 
 
+def _topics_dir():
+    """Где лежит личный инструмент поиска тем. Считается здесь и только здесь:
+    путь нужен и прогону, и окну настроек."""
+    return os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "topic_finder")
+
+
+def topics_available():
+    """Есть ли рядом с программой поиск тем.
+
+    По этому ответу окно решает, показывать ли галочку. У коллег инструмента
+    нет — и галочки они не увидят вовсе, вместо того чтобы включать пустое
+    место и потом искать, почему ничего не происходит."""
+    return os.path.isfile(os.path.join(_topics_dir(), "topic_finder.py"))
+
+
 class DigestRun(QThread):
     """Одна проверка. Второй раз объект не переиспользуется — создавайте новый."""
 
@@ -165,8 +181,7 @@ class DigestRun(QThread):
         внутри topic_finder нет.
         """
         try:
-            tf_dir = os.path.join(
-                os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "topic_finder")
+            tf_dir = _topics_dir()
             if tf_dir not in sys.path:
                 sys.path.insert(0, tf_dir)
             import topic_finder

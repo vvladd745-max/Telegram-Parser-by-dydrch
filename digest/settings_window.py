@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 import ui
 from core import llm, settings
 from core.logs import logger
+from runner import topics_available
 
 
 TIP_API = 'Ключи вашего личного приложения Telegram — программа читает каналы от вашего имени.\n\nГде взять: my.telegram.org → войдите по номеру телефона → API development tools →\nзаполните простую форму (название любое). Telegram выдаст api_id (число)\nи api_hash (длинная строка из букв и цифр).\n\nВыдаются бесплатно и один раз, никому их не показывайте.'
@@ -28,6 +29,9 @@ TIP_API = 'Ключи вашего личного приложения Telegram 
 TIP_BOT = 'Бот присылает в Telegram короткий итог: сколько постов проверено и сколько отобрано.\n\nБез бота уведомлений не будет — придётся самому открывать окно программы\nи смотреть, закончилась проверка или ещё идёт.\n\nГде взять: напишите @BotFather команду /newbot — он выдаст токен.\nСвой chat_id узнаете у @userinfobot.'
 
 TIP_MODEL = 'Программа проверена только на Qwen3-8B-128K в LM Studio: с ней отбор постов\nработает так, как задумано.\n\nСюда можно вписать любую другую модель — и локальную поменьше, и облачную\nпо адресу с ключом. Технически это работает, но как чужая модель справится\nс отбором постов, мы не проверяли и обещать ничего не можем.\n\nЕсли поменяли — нажмите «Проверить модель», а потом прогоните тестовую\nпроверку: на ней видно, разумно ли модель отбирает.'
+
+
+TIP_TOPICS = 'Сразу после проверки постов программа соберёт темы для будущих статей:\nпосмотрит, что люди ищут в поисковиках по вашим направлениям, и пришлёт\nсписок в Telegram вместе с полной выгрузкой в файле.\n\nЭто прибавляет к проверке заметное время — темы собираются по многим\nзапросам подряд. Кнопка «Остановить» прерывает проверку постов, но не сбор тем:\nначатый сбор доходит до конца.\n\nЧто искать — задаётся списком направлений, он живёт отдельно от каналов.'
 
 
 class ModelCheck(QThread):
@@ -169,6 +173,27 @@ class SettingsWindow(QWidget):
         bot_box = QGroupBox("Отчёты")
         bot_box.setLayout(bot)
 
+        # --- темы для статей ---
+        # Раздела может не быть вовсе: у коллег личного инструмента нет, и
+        # показывать им галочку значило бы предлагать включить пустое место.
+        self.find_topics = None
+        topics_box = None
+        if topics_available():
+            self.find_topics = QCheckBox("Искать темы для статей после проверки")
+            # кругляшок рядом с галочкой, как у отчётов боту
+            topics_head = QWidget()
+            topics_row = QHBoxLayout(topics_head)
+            topics_row.setContentsMargins(0, 0, 0, 0)
+            topics_row.setSpacing(6)
+            topics_row.addWidget(self.find_topics)
+            topics_row.addWidget(ui.hint(self, TIP_TOPICS))
+            topics_row.addStretch(1)
+
+            topics = QFormLayout()
+            topics.addRow(topics_head)
+            topics_box = QGroupBox("Темы для статей")
+            topics_box.setLayout(topics)
+
         # --- вид ---
         self.matrix_box = QCheckBox("Печатать журнал проверки как в «Матрице»")
         self.matrix_box.setToolTip(
@@ -216,8 +241,9 @@ class SettingsWindow(QWidget):
         bottom.addWidget(save_button)
 
         layout = QVBoxLayout(self)
-        for box in (tg_box, depth_box, model_box, bot_box, view_box):
-            layout.addWidget(box)
+        for box in (tg_box, depth_box, model_box, bot_box, topics_box, view_box):
+            if box is not None:      # раздела тем может не быть
+                layout.addWidget(box)
         layout.addWidget(self.message)
         layout.addLayout(bottom)
 
@@ -245,6 +271,8 @@ class SettingsWindow(QWidget):
         self.bot_enabled.setChecked(bool(settings.get("bot.enabled")))
         self.bot_token.setText(settings.get_secret("bot.token"))
         self.bot_chat.setText(str(settings.get("bot.chat_id") or ""))
+        if self.find_topics is not None:
+            self.find_topics.setChecked(bool(settings.get("digest.find_topics", False)))
         self.matrix_box.setChecked(bool(settings.get("ui.matrix", True)))
         theme = str(settings.get("ui.theme", "system"))
         self.theme_box.setCurrentIndex(max(0, self.theme_box.findData(theme)))
@@ -277,12 +305,18 @@ class SettingsWindow(QWidget):
         if self.bot_enabled.isChecked() and not self.bot_token.text().strip():
             troubles.append("Отчёты боту включены, но токен бота пуст.")
 
+        digest_values = {"lookback_hours": self.lookback.value(),
+                         "dry_run_hours": self.dry_run.value()}
+        # Галочки может не быть вовсе. Тогда ключ в файле не трогаем: иначе
+        # окно затирало бы настройку, которой у него нет и не должно быть.
+        if self.find_topics is not None:
+            digest_values["find_topics"] = self.find_topics.isChecked()
+
         values = {
             "telegram": {"api_id": api_id,
                          "api_hash": self.api_hash.text().strip(),
                          "target": target},
-            "digest": {"lookback_hours": self.lookback.value(),
-                       "dry_run_hours": self.dry_run.value()},
+            "digest": digest_values,
             "model": {"url": self.model_url.text().strip(),
                       "name": self.model_name.text().strip(),
                       "api_key": self.model_key.text().strip()},
@@ -331,6 +365,7 @@ class SettingsWindow(QWidget):
                 self.lookback.value(), self.dry_run.value(),
                 self.model_url.text(), self.model_name.text(), self.model_key.text(),
                 self.bot_enabled.isChecked(), self.bot_token.text(), self.bot_chat.text(),
+                self.find_topics.isChecked() if self.find_topics is not None else None,
                 self.matrix_box.isChecked(), self.theme_box.currentData(),
                 self.font_box.value())
 
