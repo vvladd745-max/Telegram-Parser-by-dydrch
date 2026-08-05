@@ -11,7 +11,7 @@
 ;      Переустановка не должна стирать месяцы накопленного состояния.
 
 #define AppName "Парсер Telegram-каналов"
-#define AppVersion "1.1"
+#define AppVersion "1.2"
 #define AppExe "Парсер Telegram-каналов.exe"
 #define BuildDir "dist\Парсер Telegram-каналов"
 ; Имя программы для панели задач. Должно совпадать с APP_USER_MODEL_ID
