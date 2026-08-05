@@ -98,7 +98,9 @@ def human_error(e):
         return (f"Telegram просит подождать примерно {minutes} мин — "
                 "слишком много попыток подряд.")
     if isinstance(e, (ConnectionError, OSError, asyncio.TimeoutError)):
-        return "Не удалось связаться с Telegram. Проверьте интернет."
+        return ("Не удалось связаться с Telegram. Проверьте интернет и VPN: "
+                "если Telegram не открывается у вас на этом компьютере, "
+                "программа тоже до него не достучится.")
     return f"Не получилось: {e}"
 
 
