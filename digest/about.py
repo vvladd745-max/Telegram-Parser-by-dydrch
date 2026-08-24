@@ -13,7 +13,7 @@ from PySide6.QtWidgets import QFormLayout, QHBoxLayout, QLabel, QVBoxLayout, QWi
 import ui
 from core import paths
 
-APP_VERSION = "1.2"
+APP_VERSION = "1.3"
 
 # --- Сюда вписываются адреса. Пустая строка не ломает страницу. ---
 LINKS = [
