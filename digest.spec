@@ -43,7 +43,10 @@ HIDDEN = [
     # программе упадёт на первой же строке.
     "csv",
     "math",
-] + collect_submodules("win32ctypes")
+    # Прокси для Telethon. Он импортирует python_socks внутри функции,
+    # а нужные куски тот подтягивает по имени уже на ходу — анализатор
+    # такого не видит, и в сборке прокси молча не работал бы.
+] + collect_submodules("python_socks") + collect_submodules("win32ctypes")
 
 a = Analysis(
     [os.path.join(ROOT, "digest", "app.py")],

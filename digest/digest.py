@@ -7,7 +7,7 @@ import portalocker
 from telethon import TelegramClient
 from telethon.errors import FloodWaitError
 from telethon.tl.types import PeerChannel
-from core import llm, telegram, seeds, logs, settings, paths
+from core import llm, telegram, seeds, logs, settings, paths, proxy
 from core.llm import LLMUnavailable
 from core.channels import link_nick
 from core.logs import logger
@@ -325,7 +325,9 @@ async def main(dry_run=None, hours=None, progress=None, cancel=None):
     state = load_state()
     cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=hours)
 
-    client = TelegramClient(SESSION, API_ID, API_HASH)
+    # proxy=... — прокси из настроек Windows, см. core/proxy.py. Без
+    # прокси там вернётся None, и Telethon пойдёт напрямую, как раньше.
+    client = TelegramClient(SESSION, API_ID, API_HASH, proxy=proxy.for_telethon())
     await client.start()
     target = await client.get_entity(TARGET)
 

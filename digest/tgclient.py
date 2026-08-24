@@ -25,7 +25,7 @@ from telethon.errors import (
 )
 from telethon.tl.functions.channels import CreateChannelRequest
 
-from core import settings, paths
+from core import settings, paths, proxy
 from core.channels import link_nick
 from core.logs import logger
 
@@ -69,7 +69,9 @@ def default_client_factory():
         )
     session = paths.session_path(settings.get("telegram.session_name"))
     paths.ensure_dirs()
-    return TelegramClient(session, api_id, api_hash)
+    # Прокси — тот же, что у прогона: окно и проверка обязаны ходить
+    # к Telegram одной дорогой, иначе вход работает, а чтение каналов нет.
+    return TelegramClient(session, api_id, api_hash, proxy=proxy.for_telethon())
 
 
 def _title(entity):
