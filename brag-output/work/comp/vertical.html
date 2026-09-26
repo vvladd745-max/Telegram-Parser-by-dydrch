@@ -1,0 +1,397 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>brag</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1080px; height: 1920px; overflow: hidden; background: #141518; }
+  body { font-family: "Inter", sans-serif; color: #e6e6e6; -webkit-font-smoothing: antialiased; }
+  .scene { position: absolute; inset: 0; opacity: 0; }
+  #bg { position: absolute; inset: 0;
+        background: radial-gradient(900px 1300px at 50% 45%, #1d2a3a 0%, #141518 60%); }
+
+  /* ---------- лента постов ---------- */
+  #feed { position: absolute; inset: 0; overflow: hidden; }
+  .col { position: absolute; top: 0; width: 320px; }
+  .post { width: 320px; margin-bottom: 22px; background: #182533; border-radius: 14px;
+          padding: 16px 18px 14px; border: 2px solid transparent;
+          box-shadow: 0 6px 20px rgba(0,0,0,.35); }
+  .post .ch { color: #6ab2f2; font-weight: 700; font-size: 19px; margin-bottom: 6px; }
+  .post .tx { font-size: 22px; line-height: 1.35; color: #e9edf1; }
+  .post .mt { font-size: 14px; color: #7f91a4; margin-top: 8px; text-align: right; }
+  .tag { display: inline-block; font-size: 14px; font-weight: 700; padding: 2px 8px; border-radius: 6px;
+         background: rgba(255,138,128,.16); color: #ff8a80; margin-right: 6px; }
+  #scrim1 { position: absolute; inset: 0;
+            background: linear-gradient(180deg, rgba(20,21,24,.2) 0%, rgba(20,21,24,.94) 32%, rgba(20,21,24,.94) 62%, rgba(20,21,24,.2) 100%); }
+  .big { position: absolute; left: 70px; font-weight: 800; letter-spacing: -2px; line-height: 1; }
+
+  /* ---------- раскрытие ---------- */
+  #lockup { position: absolute; left: 0; right: 0; top: 560px; text-align: center; }
+  #lockup img { width: 170px; height: 170px; border-radius: 50%;
+                box-shadow: 0 0 0 10px rgba(42,171,238,.12), 0 20px 60px rgba(0,0,0,.5); }
+  #lockup .t1 { font-size: 84px; line-height: 1.05; font-weight: 800; letter-spacing: -2.5px; margin-top: 34px; }
+  #lockup .t2 { font-size: 42px; line-height: 1.3; font-weight: 500; color: #b9c2cc; margin-top: 18px; }
+
+  /* ---------- окна ---------- */
+  .crop { position: absolute; left: 42px; top: 700px; width: 996px; height: 860px; border-radius: 18px;
+          overflow: hidden; background: #1e1f22; box-shadow: 0 0 0 1px #3a3d41, 0 40px 120px rgba(0,0,0,.6); }
+  .push { position: absolute; inset: 0; }
+  .win { position: absolute; left: 0; top: 0; width: 1100px; height: 876px; overflow: hidden;
+         background-size: 100% 100%; transform: translate(-258px, 12px) scale(1.15); transform-origin: 0 0; }
+  .cap { position: absolute; left: 70px; width: 940px; font-weight: 800; font-size: 84px;
+         letter-spacing: -1.5px; line-height: 1.05; }
+  .cap .w { display: inline-block; }
+  .cap .acc { color: #5aa9ff; }
+  .cap .grn { color: #3ddc84; }
+  .hl { position: absolute; border-radius: 4px; }
+
+  #console { position: absolute; left: 266px; top: 368px; width: 797px; height: 451px;
+             background: #242629; border: 1px solid #3a3d41; border-radius: 6px;
+             padding: 10px 12px; font-family: "JetBrains Mono", monospace; font-size: 13.5px;
+             line-height: 21px; color: #3ddc84; white-space: pre; overflow: hidden; }
+  #console .dim { color: #2c8f5a; }
+  #console .hot { color: #b8ffd2; font-weight: 700; }
+  .cover { position: absolute; background: #242629; }
+  .cnt { position: absolute; font-weight: 700; font-size: 20px; line-height: 25px; }
+  #plabel { position: absolute; font-size: 13.3px; color: #9aa0a6; line-height: 16px; }
+  #track { position: absolute; background: #3a3d41; border-radius: 4px; }
+  #chunk { position: absolute; left: 0; top: 0; bottom: 0; background: #5aa9ff; border-radius: 4px; }
+
+  /* ---------- канал доставки ---------- */
+  #tg { position: absolute; left: 60px; top: 700px; width: 960px; height: 860px; border-radius: 22px;
+        overflow: hidden; background: #0e1621; box-shadow: 0 0 0 1px #22303f, 0 40px 120px rgba(0,0,0,.6); }
+  #tg .head { height: 110px; background: #17212b; display: flex; align-items: center; padding: 0 26px; gap: 18px; }
+  #tg .head img { width: 66px; height: 66px; border-radius: 50%; }
+  #tg .head .n { font-size: 32px; font-weight: 700; }
+  #tg .head .s { font-size: 22px; color: #7f91a4; margin-top: 3px; }
+  #tg .msgs { position: absolute; left: 0; right: 0; bottom: 30px; padding: 0 30px; }
+  .msg { background: #182533; border-radius: 18px; padding: 18px 24px; margin-top: 20px; width: 860px; }
+  .msg .fw { font-size: 21px; color: #6ab2f2; margin-bottom: 8px; }
+  .msg .fw b { font-weight: 700; }
+  .msg .tx { font-size: 30px; line-height: 1.35; }
+  .msg .mt { font-size: 18px; color: #7f91a4; text-align: right; margin-top: 6px; }
+
+  /* ---------- финал ---------- */
+  .fin { position: absolute; left: 0; right: 0; text-align: center; font-weight: 800; letter-spacing: -2px; line-height: 1.1; }
+  #end { position: absolute; left: 0; right: 0; top: 560px; text-align: center; }
+  #end img { width: 150px; height: 150px; border-radius: 50%; }
+  #end .t1 { font-size: 80px; line-height: 1.05; font-weight: 800; letter-spacing: -2.5px; margin-top: 30px; }
+  #end .t2 { font-size: 40px; color: #b9c2cc; margin-top: 18px; font-weight: 500; }
+  #end .t3 { font-size: 27px; color: #5aa9ff; margin-top: 30px; font-family: "JetBrains Mono", monospace; }
+</style>
+</head>
+<body>
+<div id="bg"></div>
+
+<!-- 1–2: лента -->
+<div class="scene" id="s1">
+  <div id="feed"></div>
+  <div id="scrim1"></div>
+  <div class="big" id="h1a" style="top:760px;font-size:96px;">Десятки каналов.</div>
+  <div class="big" id="h1b" style="top:880px;font-size:96px;color:#ff8a80;">Тонны рекламы.</div>
+  <div id="lockup">
+    <img src="logo.png" alt="">
+    <div class="t1">Парсер<br>Telegram-каналов</div>
+    <div class="t2">Читает каналы за вас.<br>Присылает только нужное.</div>
+  </div>
+</div>
+
+<!-- 3: интересы -->
+<div class="scene" id="s3">
+  <div class="cap" id="c3" style="top:360px;"></div>
+  <div class="crop" id="k3"><div class="push" id="p3"><div class="win" id="w3" style="background-image:url(interests.png)">
+    <div id="hlbox"></div>
+  </div></div></div>
+</div>
+
+<!-- 4: проверка -->
+<div class="scene" id="s4">
+  <div class="cap" id="c4" style="top:360px;"></div>
+  <div class="crop" id="k4"><div class="push" id="p4"><div class="win" id="w4" style="background-image:url(run-live.png)">
+    <div class="cover" style="left:266px;top:276px;width:797px;height:22px;"></div>
+    <div id="plabel" style="left:266px;top:279px;"></div>
+    <div id="track" style="left:266px;top:303px;width:797px;height:8px;"><div id="chunk"></div></div>
+    <div class="cover" style="left:262px;top:316px;width:420px;height:30px;"></div>
+    <div class="cnt" id="n_checked" style="left:266px;top:319px;color:#e6e6e6;">0</div>
+    <div class="cnt" id="n_found" style="left:366px;top:319px;color:#7bd88f;">0</div>
+    <div class="cnt" id="n_skipped" style="left:473px;top:319px;color:#9aa0a6;">0</div>
+    <div class="cnt" id="n_errors" style="left:575px;top:319px;color:#9aa0a6;">0</div>
+    <div id="console"></div>
+  </div></div></div>
+</div>
+
+<!-- 5: доставка -->
+<div class="scene" id="s5">
+  <div class="cap" id="c5" style="top:300px;"></div>
+  <div id="tg">
+    <div class="head"><img src="logo.png" alt=""><div><div class="n">Дайджест</div><div class="s">приватный канал</div></div></div>
+    <div class="msgs" id="msgs"></div>
+  </div>
+</div>
+
+<!-- 6: финал -->
+<div class="scene" id="s6">
+  <div class="fin" id="f1" style="top:640px;font-size:80px;">Модель работает<br>на вашем компьютере.</div>
+  <div class="fin" id="f2" style="top:880px;font-size:80px;color:#3ddc84;">Ничего не уходит<br>в интернет.</div>
+  <div id="end">
+    <img src="logo.png" alt="">
+    <div class="t1">Парсер<br>Telegram-каналов</div>
+    <div class="t2">Windows · LM Studio · MIT</div>
+    <div class="t3">github.com/vvladd745-max/Telegram-Parser-by-dydrch</div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const seg = (t, a, b) => clamp((t - a) / (b - a));
+const eo = (u) => 1 - Math.pow(1 - u, 3);
+const eio = (u) => u < .5 ? 4 * u * u * u : 1 - Math.pow(-2 * u + 2, 3) / 2;
+const lerp = (a, b, u) => a + (b - a) * u;
+
+// ---------- данные ленты (вымышленные посты) ----------
+const POSTS = [
+  ["good", "Железный вестник", "Утекли характеристики нового складного смартфона: экран на 8 дюймов"],
+  ["ad",   "Скидки дня",       "Разыгрываем видеокарту! Подпишись на канал и лайкни пост"],
+  ["ad",   "Нейро-курсы",      "<span class='tag'>#реклама</span>Скидка 70% на курсы по нейросетям. erid: 2VtzqwX"],
+  ["good", "Разборы",          "Почему ноутбуки греются летом и что с этим делать"],
+  ["ad",   "Еда рядом",        "Промокод на доставку — успей до пятницы!"],
+  ["good", "Геймерская кухня", "Финал турнира перенесли: организаторы объяснили причину"],
+  ["ad",   "Крипто-сигналы",   "<span class='tag'>#реклама</span>Заработай на сигналах, ссылка в профиле"],
+  ["neutral","Стикеры",        "Подборка стикеров на выходные"],
+  ["good", "Техно-утро",       "Обновление Windows сломало печать: как откатить"],
+  ["ad",   "Маркет",           "Наушники за 990 ₽ — только сегодня"],
+  ["ad",   "Конкурсы",         "Розыгрыш айфона среди подписчиков. Условия внутри"],
+  ["good", "Железный вестник", "Тест новой видеокарты в играх: цифры и выводы"],
+];
+const COLS = 3, COLW = 320, GAP = 24;
+const feed = $("feed");
+const cols = [];
+for (let c = 0; c < COLS; c++) {
+  const col = document.createElement("div");
+  col.className = "col";
+  col.style.left = (36 + c * (COLW + GAP)) + "px";
+  let html = "";
+  for (let i = 0; i < 30; i++) {
+    const p = POSTS[(i * 5 + c * 7) % POSTS.length];
+    const hh = String(9 + ((i + c) % 10)).padStart(2, "0"), mm = String((i * 17 + c * 11) % 60).padStart(2, "0");
+    html += `<div class="post" data-kind="${p[0]}"><div class="ch">${p[1]}</div><div class="tx">${p[2]}</div><div class="mt">${hh}:${mm}</div></div>`;
+  }
+  col.innerHTML = html;
+  feed.appendChild(col);
+  cols.push({ el: col, speed: [1.0, 1.25, 0.85, 1.15, 0.95][c], off: [-120, -420, -260, -60, -340][c] });
+}
+const feedPosts = [...feed.querySelectorAll(".post")];
+
+// ---------- журнал проверки ----------
+const LOG = [
+  ["h", "[Железный вестник] новых постов: 4 — смотрю каждый"],
+  ["y", "   ИНТЕРЕСНО  | Утекли характеристики нового складного смартфона"],
+  ["n", "   пропускаю  | Разыгрываем видеокарту! Подпишись и лайкни пост"],
+  ["n", "   пропускаю  | #реклама Скидка 70% на курсы по нейросетям, erid"],
+  ["y", "   ИНТЕРЕСНО  | Почему ноутбуки греются летом и что с этим делать"],
+  ["h", "[Геймерская кухня] новых постов: 3 — смотрю каждый"],
+  ["n", "   пропускаю  | Промокод на доставку — успей до пятницы!"],
+  ["y", "   ИНТЕРЕСНО  | Финал турнира перенесли: организаторы объяснили"],
+  ["n", "   пропускаю  | Подборка стикеров на выходные"],
+];
+const LOG_T0 = 10.55, LOG_DT = 0.46, TYPE = 0.22;
+
+function esc(s) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;"); }
+
+function renderConsole(t) {
+  let html = "", checked = 0, found = 0, skipped = 0, channel = 0;
+  for (let i = 0; i < LOG.length; i++) {
+    const start = LOG_T0 + i * LOG_DT;
+    if (t < start) break;
+    const [kind, line] = LOG[i];
+    const n = Math.floor(line.length * clamp((t - start) / TYPE));
+    const shown = line.slice(0, n);
+    const cursor = n < line.length ? "█" : "";
+    if (kind === "h") { channel++; html += esc(shown) + cursor + "\n"; continue; }
+    if (n >= line.length) { checked++; kind === "y" ? found++ : skipped++; }
+    const cut = 13;
+    const a = shown.slice(0, cut), b = shown.slice(cut);
+    const cls = kind === "y" ? "hot" : "dim";
+    html += `<span class="${cls}">${esc(a)}</span>${esc(b)}${cursor}\n`;
+  }
+  // мигающий курсор в конце, когда всё напечатано
+  const end = LOG_T0 + LOG.length * LOG_DT;
+  if (t >= end && Math.floor((t - end) * 2.5) % 2 === 0) html += "█";
+  $("console").innerHTML = html;
+  $("n_checked").textContent = checked;
+  $("n_found").textContent = found;
+  $("n_skipped").textContent = skipped;
+  $("n_errors").textContent = 0;
+  const names = ["Железный вестник", "Геймерская кухня"];
+  const num = 4 + Math.max(1, channel);
+  $("plabel").textContent = `Канал ${num} из 54: ${names[Math.max(0, channel - 1)]}`;
+  const prog = lerp(4, 7, seg(t, LOG_T0, 14.8));
+  $("chunk").style.width = (prog / 54 * 100) + "%";
+}
+
+// ---------- сообщения в канале доставки ----------
+const MSGS = [
+  ["Железный вестник", "Утекли характеристики нового складного смартфона: экран на 8 дюймов", "10:02"],
+  ["Разборы", "Почему ноутбуки греются летом и что с этим делать", "10:02"],
+  ["Геймерская кухня", "Финал турнира перенесли: организаторы объяснили причину", "10:03"],
+];
+$("msgs").innerHTML = MSGS.map((m, i) =>
+  `<div class="msg" id="m${i}"><div class="fw">Переслано из <b>${m[0]}</b></div><div class="tx">${m[1]}</div><div class="mt">${m[2]}</div></div>`).join("");
+const MSG_T = [15.45, 16.0, 16.55];
+
+// ---------- подписи по словам ----------
+function setWords(el, html) { el.innerHTML = html; return [...el.querySelectorAll(".w")]; }
+const c3w = setWords($("c3"), `<span class="w">Опишите</span> <span class="w acc">интересы</span><br><span class="w">обычными</span> <span class="w">словами</span>`);
+const c4w = setWords($("c4"), `<span class="w">Модель</span> <span class="w">читает</span><br><span class="w grn">каждый</span> <span class="w grn">пост</span>`);
+const c5w = setWords($("c5"), `<span class="w">Нужное —</span><br><span class="w">в ваш</span> <span class="w acc">приватный</span><br><span class="w acc">канал</span>`);
+function words(ws, t, t0, step = 0.09) {
+  ws.forEach((w, i) => {
+    const u = eo(seg(t, t0 + i * step, t0 + i * step + 0.35));
+    w.style.opacity = u; w.style.transform = `translateY(${(1 - u) * 28}px)`;
+  });
+}
+
+// подсветка строк фильтра на странице «Интересы» (координаты окна, 1100×876)
+const HL = [
+  [266.5, 18, "g"], [284.7, 18, "g"], [302.9, 18, "g"],
+  [356.8, 18, "r"], [374.9, 18, "r"], [393, 18, "r"],
+];
+$("hlbox").innerHTML = HL.map((h, i) => `<div class="hl" id="hlr${i}"></div>`).join("");
+HL.forEach((h, i) => {
+  const d = $("hlr" + i);
+  d.style.left = "248px"; d.style.top = h[0] + "px"; d.style.height = h[1] + "px"; d.style.width = "0px";
+  d.style.background = h[2] === "g" ? "rgba(61,220,132,.20)" : "rgba(255,138,128,.18)";
+  d.style.borderLeft = "3px solid " + (h[2] === "g" ? "#3ddc84" : "#ff8a80");
+});
+
+function vis(el, o) { el.style.opacity = o; el.style.visibility = o <= 0.001 ? "hidden" : "visible"; }
+
+function render(t) {
+  // ===== 1–2: лента (0–6) =====
+  const s1 = $("s1");
+  vis(s1, t < 6 ? 1 - eio(seg(t, 5.72, 6.0)) : 0);
+  if (t < 6.05) {
+    // скорость 260 px/с, после 3 с плавно тормозим до нуля к 3.6 с
+    const v0 = 260;
+    const u = seg(t, 3.0, 3.6);
+    const pos = v0 * Math.min(t, 3) + v0 * 0.6 * (u - u * u / 2);
+    cols.forEach((c) => { c.el.style.transform = `translateY(${c.off - pos * c.speed}px)`; });
+    // отбор: реклама гаснет, нужное светится
+    const f = eio(seg(t, 3.15, 3.8));
+    feedPosts.forEach((p) => {
+      const k = p.dataset.kind;
+      if (k === "good") {
+        p.style.opacity = 1;
+        p.style.borderColor = `rgba(61,220,132,${0.9 * f})`;
+        p.style.boxShadow = `0 6px 20px rgba(0,0,0,.35), 0 0 ${28 * f}px rgba(61,220,132,${0.35 * f})`;
+      } else {
+        p.style.opacity = 1 - 0.82 * f;
+        p.style.filter = `grayscale(${f})`;
+        p.style.borderColor = "transparent";
+        p.style.boxShadow = "0 6px 20px rgba(0,0,0,.35)";
+      }
+    });
+    // подложка под заголовком: сильная в 1-й сцене, затем общий затемняющий слой под логотип
+    const scr = $("scrim1");
+    const lockIn = eio(seg(t, 3.85, 4.3));
+    const scrimOut = eio(seg(t, 2.85, 3.2));
+    scr.style.opacity = Math.max(1 - scrimOut, 0);
+    feed.style.filter = `blur(${lockIn * 6}px) brightness(${1 - lockIn * 0.45})`;
+    feed.style.transform = `scale(${1 - lockIn * 0.04})`;
+    // заголовки
+    const a = eo(seg(t, 0.12, 0.45)), b = eo(seg(t, 1.25, 1.58));
+    const out = eio(seg(t, 2.7, 2.95));
+    $("h1a").style.opacity = a * (1 - out); $("h1a").style.transform = `translateX(${(1 - a) * -60 - out * 40}px)`;
+    $("h1b").style.opacity = b * (1 - out); $("h1b").style.transform = `translateX(${(1 - b) * -60 - out * 40}px)`;
+    // логотип и название
+    const lk = $("lockup");
+    const li = eo(seg(t, 3.9, 4.35)), ti = eo(seg(t, 4.05, 4.5)), gi = eo(seg(t, 4.25, 4.7));
+    const img = lk.querySelector("img"), t1 = lk.querySelector(".t1"), t2 = lk.querySelector(".t2");
+    img.style.opacity = li; img.style.transform = `scale(${0.7 + 0.3 * li})`;
+    t1.style.opacity = ti; t1.style.transform = `translateY(${(1 - ti) * 30}px)`;
+    t2.style.opacity = gi; t2.style.transform = `translateY(${(1 - gi) * 30}px)`;
+  }
+
+  // ===== 3: интересы (6–10) =====
+  const s3 = $("s3");
+  const in3 = eo(seg(t, 6.05, 6.55)), out3 = eio(seg(t, 9.72, 10.0));
+  vis(s3, t >= 6 && t < 10.05 ? 1 : 0);
+  if (t >= 6 && t < 10.05) {
+    const w = $("k3");
+    const push = eio(seg(t, 6.3, 9.9));
+    w.style.opacity = in3 * (1 - out3);
+    w.style.transform = `translateY(${(1 - in3) * 120}px)`;
+    $("p3").style.transformOrigin = "50% 0%";
+    $("p3").style.transform = `scale(${1 + push * 0.06})`;
+    words(c3w, t, 6.25);
+    $("c3").style.opacity = 1 - out3;
+    HL.forEach((h, i) => {
+      const u = eo(seg(t, 7.0 + i * 0.28, 7.0 + i * 0.28 + 0.3));
+      $("hlr" + i).style.width = (u * 400) + "px";
+    });
+  }
+
+  // ===== 4: проверка (10–15) =====
+  const s4 = $("s4");
+  vis(s4, t >= 10 && t < 15.05 ? 1 : 0);
+  if (t >= 10 && t < 15.05) {
+    const in4 = eo(seg(t, 10.05, 10.5)), out4 = eio(seg(t, 14.72, 15.0));
+    const w = $("k4");
+    const push = eio(seg(t, 10.3, 14.9));
+    w.style.opacity = in4 * (1 - out4);
+    w.style.transform = `translateY(${(1 - in4) * 120}px)`;
+    $("p4").style.transformOrigin = "50% 0%";
+    $("p4").style.transform = `scale(${1 + push * 0.05})`;
+    words(c4w, t, 10.2);
+    $("c4").style.opacity = 1 - out4;
+    renderConsole(t);
+  }
+
+  // ===== 5: доставка (15–18) =====
+  const s5 = $("s5");
+  vis(s5, t >= 15 && t < 18.05 ? 1 : 0);
+  if (t >= 15 && t < 18.05) {
+    const in5 = eo(seg(t, 15.05, 15.45)), out5 = eio(seg(t, 17.72, 18.0));
+    $("tg").style.opacity = in5 * (1 - out5);
+    $("tg").style.transform = `translateY(${(1 - in5) * 80}px)`;
+    words(c5w, t, 15.15);
+    $("c5").style.opacity = 1 - out5;
+    MSGS.forEach((m, i) => {
+      const u = eo(seg(t, MSG_T[i], MSG_T[i] + 0.35));
+      const el = $("m" + i);
+      el.style.opacity = u; el.style.transform = `translateY(${(1 - u) * 50}px) scale(${0.96 + 0.04 * u})`;
+      el.style.display = t < MSG_T[i] ? "none" : "block";
+    });
+  }
+
+  // ===== 6: финал (18–22) =====
+  const s6 = $("s6");
+  vis(s6, t >= 18 ? 1 : 0);
+  if (t >= 18) {
+    const a = eo(seg(t, 18.15, 18.55)), b = eo(seg(t, 18.85, 19.25));
+    const out = eio(seg(t, 20.25, 20.5));
+    $("f1").style.opacity = a * (1 - out); $("f1").style.transform = `translateY(${(1 - a) * 30 - out * 20}px)`;
+    $("f2").style.opacity = b * (1 - out); $("f2").style.transform = `translateY(${(1 - b) * 30 - out * 20}px)`;
+    const e = $("end");
+    const li = eo(seg(t, 20.55, 20.95)), ti = eo(seg(t, 20.7, 21.1)), gi = eo(seg(t, 20.85, 21.25)), ui = eo(seg(t, 21.0, 21.4));
+    const fade = eio(seg(t, 21.75, 22.0));
+    const [img, t1, t2, t3] = [e.querySelector("img"), e.querySelector(".t1"), e.querySelector(".t2"), e.querySelector(".t3")];
+    img.style.opacity = li; img.style.transform = `scale(${0.7 + 0.3 * li})`;
+    t1.style.opacity = ti; t1.style.transform = `translateY(${(1 - ti) * 30}px)`;
+    t2.style.opacity = gi; t2.style.transform = `translateY(${(1 - gi) * 30}px)`;
+    t3.style.opacity = ui; t3.style.transform = `translateY(${(1 - ui) * 30}px)`;
+    s6.style.opacity = 1 - fade * 0; // финальный кадр держим
+  }
+}
+window.render = render;
+window.ready = Promise.all([
+  document.fonts.ready,
+  ...[...document.images].map((im) => im.complete ? 1 : new Promise((r) => { im.onload = im.onerror = r; })),
+  ...["interests.png", "run-live.png"].map((s) => new Promise((r) => { const i = new Image(); i.onload = i.onerror = r; i.src = s; })),
+]);
+render(0);
+</script>
+</body>
+</html>
